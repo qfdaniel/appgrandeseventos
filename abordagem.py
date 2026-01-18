@@ -29,19 +29,38 @@ st.set_page_config(
 TITULO_PRINCIPAL = "App Grandes Eventos"
 OBRIG = ":red[**\\***]"
 
-# --- MAPA DINÂMICO ---
-def get_maps_url(evento_nome):
-    """Retorna URL do Maps centrada na cidade do evento"""
-    nome = (evento_nome or "").lower()
-    if "rj" in nome or "rio" in nome: return "https://www.google.com/maps/@-22.9068,-43.1729,12z"
-    if "ba" in nome or "salvador" in nome: return "https://www.google.com/maps/@-12.9777,-38.5016,12z"
-    if "sp" in nome or "paulo" in nome: return "https://www.google.com/maps/@-23.5505,-46.6333,12z"
-    if "belem" in nome or "belém" in nome or "cop" in nome: return "https://www.google.com/maps/@-1.4558,-48.4902,12z"
-    if "recife" in nome: return "https://www.google.com/maps/@-8.0476,-34.8770,12z"
-    if "manaus" in nome: return "https://www.google.com/maps/@-3.1190,-60.0217,12z"
-    if "brasilia" in nome or "df" in nome: return "https://www.google.com/maps/@-15.7975,-47.8919,12z"
-    # Fallback genérico
-    return "https://www.google.com/maps/d/u/0/edit?mid=1E7uIgoEchrY_KQn4jzu4ePs8WrdWwxc&usp=sharing"
+# --- HELPER: NORMALIZAR TEXTO ---
+def _normalize_text(s: str) -> str:
+    if s is None: return ""
+    s = str(s)
+    s = unicodedata.normalize("NFD", s)
+    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
+    return s.strip().lower()
+
+# --- MAPA DA CIDADE (Lógica Estrita) ---
+def get_city_map_url(evento_nome):
+    """Retorna URL do Maps baseada no nome do evento/planilha"""
+    nome = _normalize_text(evento_nome)
+    
+    # Mapeamento conforme solicitado
+    if "campina grande" in nome: 
+        return "https://www.google.com/maps?q=Campina+Grande"
+    if "olinda" in nome: 
+        return "https://www.google.com/maps?q=Olinda"
+    if "recife" in nome: 
+        return "https://www.google.com/maps?q=Recife"
+    if "rj" in nome or "rio" in nome: 
+        return "https://www.google.com/maps?q=Rio+de+Janeiro"
+    if "sp" in nome or "paulo" in nome: 
+        return "https://www.google.com/maps?q=Sao+Paulo"
+        
+    # Fallbacks genéricos antigos
+    if "belem" in nome or "cop" in nome: return "https://www.google.com/maps?q=Belem"
+    if "manaus" in nome: return "https://www.google.com/maps?q=Manaus"
+    if "brasilia" in nome or "df" in nome: return "https://www.google.com/maps?q=Brasilia"
+    
+    # Padrão
+    return "https://www.google.com/maps"
 
 IDENT_OPCOES = [
     "Sinal de dados", "Comunicação (voz) relacionada ao evento", "Comunicação (voz) não relacionada ao evento",
@@ -94,30 +113,52 @@ def _img_b64(path: str) -> Optional[str]:
     if not p.exists(): return None
     return base64.b64encode(p.read_bytes()).decode("utf-8")
 
-def render_header(imagem: str = "anatel.png"):
+# --- LISTAR ABAS ---
+@st.cache_data(ttl=180)
+def listar_abas_estacoes(_client, spreadsheet_id):
+    try:
+        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
+        todas = [ws.title for ws in planilha.worksheets()]
+        estacoes = [t for t in todas if t not in ABAS_SISTEMA]
+        return estacoes
+    except:
+        return []
+
+# --- HEADER ---
+def render_header(imagem: str = "anatel.png", show_logout: bool = False):
     img_b64 = _img_b64(imagem)
     img_tag = f'<img class="hdr-img" src="data:image/png;base64,{img_b64}" alt="Logo Anatel">' if img_b64 else ""
     
     evento_atual = st.session_state.get('evento_nome', '')
     
-    # Texto do subtítulo
-    texto_display = f"Evento selecionado: {evento_atual}" if evento_atual else ""
-    subtitulo = f"<h4 style='color:#2E7D32; margin:0; font-size: 0.90rem; margin-top: -12px; font-weight: 600; letter-spacing: -0.3px;'>{texto_display}</h4>" if texto_display else ""
-
-    # Estrutura do Header
-    st.markdown(
-        f"""
-        <div class="header-logos">
-            <div class="hdr-left">{img_tag}</div>
-            <div class="hdr-center">
-                <h2>{TITULO_PRINCIPAL}</h2>
-                {subtitulo}
+    c1, c2 = st.columns([1.5, 8.5])
+    
+    with c1:
+        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:100%; padding-right:10px;">{img_tag}</div>', unsafe_allow_html=True)
+    
+    with c2:
+        st.markdown(
+            f"""
+            <div style="text-align: center;">
+                <h2 style="margin:0; color:#1A311F; font-weight:800; font-size: 1.6rem; line-height: 1.1; margin-bottom: 0px; text-shadow: 1px 1px 0 rgba(255,255,255,.35);">{TITULO_PRINCIPAL}</h2>
             </div>
-            <div class="hdr-right"></div>
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+            """, 
+            unsafe_allow_html=True
+        )
+        
+        if evento_atual:
+            sc1, sc2, sc3 = st.columns([1, 8, 1]) 
+            with sc2:
+                 st.markdown(f"<h4 style='color:#2E7D32; margin:0; font-size: 0.90rem; margin-top: -8px; font-weight: 600; letter-spacing: -0.3px; text-align: center;'>Evento selecionado: {evento_atual}</h4>", unsafe_allow_html=True)
+            with sc3:
+                if show_logout:
+                    if st.button("🔄", key="btn_trocar_evento", help="Trocar Evento"):
+                        for key in ['evento_nome', 'spreadsheet_id', 'view']:
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        st.rerun()
+
+    st.markdown("<hr>", unsafe_allow_html=True)
 
 # --- CSS ---
 st.markdown(f"""
@@ -127,35 +168,16 @@ st.markdown(f"""
   .stApp {{ background-color: #F1F8E9; }}
   
   #MainMenu, footer, header {{ visibility: hidden; }}
-  div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; }}
+  div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; align-items: center; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
   
-  /* --- HEADER AJUSTADO --- */
-  .header-logos {{
-    display: grid; 
-    grid-template-columns: 70px 1fr 70px;
-    align-items: center; 
-    text-align: center; 
-    margin-bottom: -8px;
-    padding: 0 5px;
-  }}
-  
+  /* Imagem no Header */
   .hdr-img {{ height: 46px; }} 
-  .hdr-left {{ justify-self: end; display: flex; align-items: center; padding-right: 5px; }}
-  .hdr-center {{ justify-self: center; width: 100%; }}
-  .hdr-right {{ justify-self: start; }}
-  
-  .header-logos h2{{
-    margin:0; color:#1A311F; font-weight:800;
-    text-shadow: 1px 1px 0 rgba(255,255,255,.35), 0 1px 2px rgba(0,0,0,.28);
-    font-size: 1.6rem;
-    line-height: 1.1;
-    margin-bottom: 0px;
-  }}
 
+  /* Linha divisória */
   hr {{ margin-top: 0 !important; margin-bottom: 1rem !important; }}
 
-  /* Botões */
+  /* Botões Principais (Azuis) */
   .stButton > button, .app-btn, div[data-testid="stLinkButton"] a {{
     width:100%; height: var(--btn-height); min-height: var(--btn-height);
     font-size: var(--btn-font) !important; font-weight:600 !important;
@@ -169,6 +191,32 @@ st.markdown(f"""
   .stButton > button:hover, div[data-testid="stLinkButton"] a:hover {{ 
     filter: brightness(1.03) !important; transform: translateY(-2px) !important; 
   }}
+  
+  /* ESTILO ESPECIAL: Botão de Formulário (Registrar/Salvar) */
+  div[data-testid="stForm"] .stButton > button:hover {{
+    background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
+    border-color: #7cb342 !important;
+    color: white !important;
+    filter: brightness(1.05) !important;
+  }}
+
+  /* ESTILO DO BOTÃO DE TROCA (🔄) */
+  div[data-testid="stColumn"]:nth-of-type(2) div[data-testid="stColumn"]:nth-of-type(3) button {{
+    height: 28px !important; 
+    min-height: 28px !important;
+    width: 28px !important;
+    padding: 0 !important;
+    font-size: 1.0rem !important;
+    border: 1px solid #2E7D32 !important;
+    background: transparent !important;
+    color: #2E7D32 !important;
+    box-shadow: none !important;
+    margin-top: -12px !important;
+  }}
+  div[data-testid="stColumn"]:nth-of-type(2) div[data-testid="stColumn"]:nth-of-type(3) button:hover {{
+    background: #e8f5e9 !important;
+    transform: scale(1.1) !important;
+  }}
 
   /* Botões Vermelhos */
   #marker-vermelho {{ display: none; }}
@@ -176,9 +224,9 @@ st.markdown(f"""
     background: linear-gradient(to bottom, #c62828, #e53935) !important; border-color: #a92222 !important;
   }}
   
-  /* Botões Verdes */
+  /* Botões Verdes (Tradutor e MAPA) */
   div[data-testid="stLinkButton"] a[href*="translate.google.com"],
-  div[data-testid="stLinkButton"] a[href*="http://googleusercontent.com/maps.google.com"] {{
+  div[data-testid="stLinkButton"] a[href*="maps.google"] {{
     background: linear-gradient(to bottom, #2e7d32, #4caf50) !important; border-color: #1b5e20 !important;
   }}
   
@@ -191,6 +239,7 @@ st.markdown(f"""
   .confirm-warning{{ background: linear-gradient(to bottom, #f0ad4e, #ec971f); color:#333 !important; font-weight:600; text-align:center; padding:1rem; border-radius:8px; margin-bottom:1rem; border: 1px solid #d58512; }}
   .info-green {{ background: linear-gradient(to bottom, #1b5e20, #2e7d32); color: #fff; font-weight: 700; text-align: center; padding: .8rem 1rem; border-radius: 8px; margin: .25rem 0 1rem; }}
   
+  /* Tabela UTE */
   .ute-table {{ width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }}
   .ute-table th, .ute-table td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
   .ute-table th {{ background-color: #f2f2f2; color: #333; }}
@@ -256,23 +305,6 @@ def _valid_neg_coord(value: str) -> bool:
     v = value.strip()
     if v == "": return True
     return re.match(r"^-\d+\.\d{6}$", v) is not None
-
-def _normalize_text(s: str) -> str:
-    if s is None: return ""
-    s = str(s)
-    s = unicodedata.normalize("NFD", s)
-    s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
-    return s.strip().lower()
-
-@st.cache_data(ttl=180)
-def listar_abas_estacoes(_client, spreadsheet_id):
-    try:
-        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
-        todas = [ws.title for ws in planilha.worksheets()]
-        estacoes = [t for t in todas if t not in ABAS_SISTEMA]
-        return estacoes
-    except:
-        return []
 
 # ===================== FUNÇÕES DE CARGA =====================
 
@@ -378,14 +410,14 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
             "ID": get_col(0),    # H
             "Fiscal": get_col(2),# J
             "Data": get_col(3),  # K
-            "HH:mm": "",
+            "HH:mm": get_col(4), # L
             "Frequência (MHz)": get_col(5), # M
             "Largura (kHz)": get_col(6),    # N
             "Faixa de Frequência Envolvida": get_col(7), # O
             "Identificação": "",
             "Autorizado?": "", "UTE?": "", "Processo SEI UTE": "",
             "Ocorrência (observações)": get_col(12), # T
-            "Alguém mais ciente?": "",
+            "Alguém mais ciente?": get_col(13), # U
             "Interferente?": get_col(14), # V
             "Situação": get_col(15),      # W
             "Fonte": "ABORDAGEM",
@@ -394,6 +426,90 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
         pend = pend[pend["Situação"].str.strip().str.lower().eq("pendente")].copy()
         pend = pend.sort_values(by=["Local","Data"], kind="stable").reset_index(drop=True)
         return pend
+    except Exception:
+        return pd.DataFrame()
+
+# --- NOVA FUNÇÃO: CARREGAR DE TODAS AS ESTAÇÕES ---
+@st.cache_data(ttl=180)
+def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
+    """
+    Busca pendências em TODAS as abas de estações (excluindo sistema).
+    Usa busca dinâmica de cabeçalhos.
+    """
+    try:
+        estacoes = listar_abas_estacoes(_client, spreadsheet_id)
+        if not estacoes: return pd.DataFrame()
+
+        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
+        dfs = []
+
+        for nome_aba in estacoes:
+            try:
+                aba = planilha.worksheet(nome_aba)
+                # Pega tudo para garantir headers
+                matriz = aba.get_all_values()
+                if not matriz or len(matriz) < 2: continue
+
+                header, rows = matriz[0], matriz[1:]
+                df = pd.DataFrame(rows, columns=header)
+                
+                # Helper local para achar colunas
+                def col_like(*checks):
+                    return _first_col_match(df.columns, *[(lambda s, c=c: c(s)) for c in checks])
+
+                cols_map = {
+                    'situ': lambda s: s == "situação" or s == "situacao", # Coluna P
+                    'id': lambda s: s == "id",
+                    'fiscal': lambda s: "fiscal" in s,
+                    'data': lambda s: s == "data" or s == "dia",
+                    'hora': lambda s: "hh" in s or "hora" in s,
+                    'freq': lambda s: "frequência" in s or "frequencia" in s,
+                    'bw': lambda s: "largura" in s,
+                    'faixa': lambda s: "faixa" in s,
+                    'ident': lambda s: "identificação" in s,
+                    'autz': lambda s: "autorizado" in s,
+                    'ute': lambda s: s.strip() == "ute" or "ute?" in s,
+                    'proc': lambda s: "processo" in s,
+                    'obs': lambda s: "ocorrência" in s or "observa" in s,
+                    'cient': lambda s: "ciente" in s,
+                    'inter': lambda s: "interferente" in s
+                }
+                
+                found = {k: col_like(v) for k, v in cols_map.items()}
+                
+                # Requisito mínimo: Situação e ID
+                if not (found['situ'] and found['id']): continue
+
+                # Filtra Pendentes
+                situ = df[found['situ']].astype(str).str.strip().str.lower()
+                pend = df[situ.eq("pendente")].copy()
+                if pend.empty: continue
+
+                # Monta DF padronizado
+                out = pd.DataFrame()
+                out["Local"] = nome_aba
+                out["EstacaoRaw"] = nome_aba
+                out["ID"] = pend[found['id']]
+                
+                mappings = [
+                    ("Fiscal", 'fiscal'), ("Data", 'data'), ("HH:mm", 'hora'),
+                    ("Frequência (MHz)", 'freq'), ("Largura (kHz)", 'bw'),
+                    ("Faixa de Frequência Envolvida", 'faixa'), ("Identificação", 'ident'),
+                    ("Autorizado?", 'autz'), ("UTE?", 'ute'), ("Processo SEI UTE", 'proc'),
+                    ("Ocorrência (observações)", 'obs'), ("Alguém mais ciente?", 'cient'),
+                    ("Interferente?", 'inter'), ("Situação", 'situ')
+                ]
+                for dest, key in mappings:
+                    out[dest] = pend[found[key]] if found[key] else ""
+
+                out["Fonte"] = "ESTACAO"
+                dfs.append(out)
+
+            except: pass
+        
+        if not dfs: return pd.DataFrame()
+        return pd.concat(dfs, ignore_index=True)
+
     except Exception:
         return pd.DataFrame()
 
@@ -486,7 +602,7 @@ def atualizar_campos_abordagem_por_id(_client, spreadsheet_id, id_h: str, novos_
         col_map = {
             "Identificação": "P", "Autorizado?": "Q", "UTE?": "R",
             "Processo SEI UTE": "S", "Ocorrência (observações)": "T",
-            "Interferente?": "V", "Situação": "W"
+            "Alguém mais ciente?": "U", "Interferente?": "V", "Situação": "W"
         }
         
         for k, v in novos_valores.items():
@@ -628,8 +744,17 @@ def tela_selecao_evento(client):
     _, col_cent, _ = st.columns([1, 2, 1])
     
     with col_cent:
-        # Imagem reduzida em 15% (de 200px para 170px)
-        st.image("anatel.png", width=170)
+        # Imagem reduzida em 15% (de 200px para 170px) e centralizada via CSS
+        img_b64 = _img_b64("anatel.png")
+        if img_b64:
+            st.markdown(
+                f"""
+                <div style="display: flex; justify-content: center;">
+                    <img src="data:image/png;base64,{img_b64}" width="170">
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
         
         st.markdown(f"<h3 style='text-align: center; color: #14337b;'>{TITULO_PRINCIPAL}</h3>", unsafe_allow_html=True)
         st.markdown("<p style='text-align: center;'>Selecione o evento para carregar a base de dados:</p>", unsafe_allow_html=True)
@@ -638,6 +763,15 @@ def tela_selecao_evento(client):
         
         if not eventos_dict:
             st.error("Nenhuma planilha de 'Monitoração' encontrada.")
+            with st.expander("🛠️ Diagnóstico de Conexão"):
+                st.info("O robô não encontrou planilhas contendo 'Monitoração'.")
+                try:
+                    email_robo = st.secrets["gcp_service_account"]["client_email"]
+                    st.write("**Passo 1:** Copie o e-mail do robô abaixo:")
+                    st.code(email_robo, language="text")
+                    st.write("**Passo 2:** Vá na planilha do evento no Google Drive -> Compartilhar -> Cole esse e-mail como Editor.")
+                except:
+                    st.warning("Não foi possível ler o client_email do secrets.toml.")
             return
 
         opcoes = ["Selecione..."] + list(eventos_dict.keys())
@@ -651,21 +785,22 @@ def tela_selecao_evento(client):
             st.rerun()
 
 def tela_menu_principal(client, spread_id):
-    render_header()
-    st.divider()
+    render_header(show_logout=True)
 
     df_painel = carregar_pendencias_painel_mapeadas(client, spread_id)
     df_abord  = carregar_pendencias_abordagem_pendentes(client, spread_id)
+    df_estac  = carregar_pendencias_todas_estacoes(client, spread_id) # Nova busca
     
     count_painel = len(df_painel) if df_painel is not None else 0
     count_abord = len(df_abord) if df_abord is not None else 0
-    total = count_painel + count_abord
+    count_estac = len(df_estac) if df_estac is not None else 0
+    total = count_painel + count_abord + count_estac
 
     label_tratar = f"**📝 TRATAR** emissões pendentes ({total})"
     
-    # URL Dinâmica do Mapa
+    # URL Dinâmica do Mapa (Lógica Estrita)
     cidade_atual = st.session_state.get('evento_nome', '')
-    link_mapa = get_maps_url(cidade_atual)
+    link_mapa = get_city_map_url(cidade_atual)
 
     _, center_col, _ = st.columns([1, 2, 1])
     with center_col:
@@ -683,24 +818,21 @@ def tela_menu_principal(client, spread_id):
             if st.button("🗒️ **CONSULTAR** Atos de UTE", use_container_width=True, key="btn_ute"):
                 st.session_state.view = 'tabela_ute'; st.rerun()
             
-            st.link_button("🗺️ **Mapa das Estações**", link_mapa, use_container_width=True)
+            # Botão renomeado para "Mapa da Cidade" com link estrito
+            st.link_button("🗺️ **Mapa da Cidade**", link_mapa, use_container_width=True)
             st.link_button("🌍 **Tradutor de Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
-            
-            st.markdown("---")
-            if st.button("🔄 Trocar Evento", use_container_width=True):
-                for key in ['evento_nome', 'spreadsheet_id']:
-                    if key in st.session_state: del st.session_state[key]
-                st.session_state.view = 'selecao'
-                st.rerun()
 
 def tela_consultar(client, spread_id):
     render_header()
-    st.divider()
     st.markdown('<div class="info-green">Consulte as emissões pendentes de identificação.</div>', unsafe_allow_html=True)
 
     df_p = carregar_pendencias_painel_mapeadas(client, spread_id)
     df_a = carregar_pendencias_abordagem_pendentes(client, spread_id)
-    df_pend = pd.concat([df_p, df_a], ignore_index=True) if (not df_p.empty and not df_a.empty) else (df_p if not df_p.empty else df_a)
+    df_e = carregar_pendencias_todas_estacoes(client, spread_id)
+    
+    # Concatena tudo
+    dfs = [d for d in [df_p, df_a, df_e] if not d.empty]
+    df_pend = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
     if not df_pend.empty:
         opcoes = [f"{r['Local']} | {r['Data']} | {r['Frequência (MHz)']} MHz | {r.get('Ocorrência (observações)','')} | {r['ID']}" for _, r in df_pend.iterrows()]
@@ -713,10 +845,19 @@ def tela_consultar(client, spread_id):
             st.markdown("#### Editar ocorrência")
             with st.form("form_editar_pendente"):
                 c1, c2 = st.columns(2)
+                
+                # Coluna ESQUERDA (Somente Leitura)
                 with c1:
                     st.text_input("ID", value=str(reg.get("ID","")), disabled=True)
-                    st.text_input("Estação", value=str(reg.get("Local","")), disabled=True)
-                    st.text_input("Freq (MHz)", value=str(reg.get("Frequência (MHz)","")), disabled=True)
+                    st.text_input("Estação utilizada", value=str(reg.get("Local","")), disabled=True)
+                    st.text_input("Fiscal", value=str(reg.get("Fiscal","")), disabled=True)
+                    st.text_input("Data da identificação", value=str(reg.get("Data","")), disabled=True)
+                    st.text_input("HH:mm", value=str(reg.get("HH:mm","") or reg.get("Hora","")), disabled=True)
+                    st.text_input("Frequência (MHz)", value=str(reg.get("Frequência (MHz)","")), disabled=True)
+                    st.text_input("Largura (kHz)", value=str(reg.get("Largura (kHz)","")), disabled=True)
+                    st.text_input("Faixa de Frequência Envolvida", value=str(reg.get("Faixa de Frequência Envolvida","")), disabled=True)
+
+                # Coluna DIREITA (Edição)
                 with c2:
                     ident_v = str(reg.get("Identificação",""))
                     ident_edit = st.selectbox(f"Identificação {OBRIG}", IDENT_OPCOES, index=IDENT_OPCOES.index(ident_v) if ident_v in IDENT_OPCOES else 0)
@@ -726,9 +867,12 @@ def tela_consultar(client, spread_id):
                     autz_edit = st.selectbox(f"Autorizado? {OBRIG}", autz_opts, index=autz_opts.index(autz_v) if autz_v in autz_opts else 2)
                     
                     ute_check = st.checkbox("UTE?", value=(str(reg.get("UTE?","")).lower() in ["sim","true","1","ok"]))
-                    proc_edit = st.text_input("Processo SEI UTE", value=str(reg.get("Processo SEI UTE","")))
-                    obs_edit  = st.text_area("Observações", value=str(reg.get("Ocorrência (observações)","")))
+                    proc_edit = st.text_input("Processo SEI UTE (ou Ato UTE)", value=str(reg.get("Processo SEI UTE","")))
                     
+                    obs_edit  = st.text_area("Ocorrência (observações)", value=str(reg.get("Ocorrência (observações)","")))
+                    
+                    cient_edit = st.text_input("Alguém mais ciente?", value=str(reg.get("Alguém mais ciente?","")))
+
                     interf_v = str(reg.get("Interferente?",""))
                     interf_opts = ["Sim", "Não", "Indefinido"]
                     interf_edit = st.selectbox(f"Interferente? {OBRIG}", interf_opts, index=interf_opts.index(interf_v) if interf_v in interf_opts else 2)
@@ -747,9 +891,12 @@ def tela_consultar(client, spread_id):
                         pac = {
                             "Identificação": ident_edit, "Autorizado?": autz_edit, 
                             "UTE?": "Sim" if ute_check else "Não", "Processo SEI UTE": proc_edit,
-                            "Ocorrência (observações)": obs_edit, "Interferente?": interf_edit, "Situação": situ_edit
+                            "Ocorrência (observações)": obs_edit, 
+                            "Alguém mais ciente?": cient_edit,
+                            "Interferente?": interf_edit, "Situação": situ_edit
                         }
-                        if reg["Fonte"] == "PAINEL":
+                        # PAINEL ou ESTACAO usam a mesma lógica de atualização
+                        if reg["Fonte"] == "PAINEL" or reg["Fonte"] == "ESTACAO":
                             res = atualizar_campos_na_aba_mae(client, spread_id, str(reg["EstacaoRaw"]), str(reg["ID"]), pac)
                         else:
                             res = atualizar_campos_abordagem_por_id(client, spread_id, str(reg["ID"]), pac)
@@ -762,7 +909,6 @@ def tela_consultar(client, spread_id):
 
 def tela_inserir(client, spread_id):
     render_header()
-    st.divider()
 
     # --- ESTADOS DA TELA ---
     if 'insert_success' in st.session_state:
@@ -813,6 +959,9 @@ def tela_inserir(client, spread_id):
         proc = st.text_input("Processo SEI UTE", value=dados_prev.get('Processo SEI ou Ato UTE', ''))
         obs = st.text_area(f"Observações {OBRIG}", value=dados_prev.get('Observações/Detalhes/Contatos', ''))
         
+        situ_opts = ["Pendente", "Concluído"]
+        situacao = st.selectbox(f"Situação {OBRIG}", situ_opts, index=0)
+        
         submitted = st.form_submit_button("Registrar Emissão", use_container_width=True)
 
         if submitted:
@@ -830,7 +979,7 @@ def tela_inserir(client, spread_id):
                     'Dia': dia, 'Hora': hora, 'Fiscal': fiscal, 'Local/Região': local,
                     'Frequência em MHz': freq, 'Largura em kHz': larg, 'Faixa de Frequência': faixa,
                     'Identificação': ident, 'UTE?': ute, 'Processo SEI ou Ato UTE': proc,
-                    'Observações/Detalhes/Contatos': obs, 'Situação': 'Pendente',
+                    'Observações/Detalhes/Contatos': obs, 'Situação': situacao,
                     'Autorizado? (Q)': 'Indefinido', 'Interferente?': 'Indefinido'
                 }
                 st.session_state.dados_para_salvar = dados_submit
@@ -850,7 +999,6 @@ def tela_inserir(client, spread_id):
 
 def tela_bsr_erb(client, spread_id):
     render_header()
-    st.divider()
     
     st.markdown('<div id="marker-bsr-erb-form"></div>', unsafe_allow_html=True)
     with st.form("form_bsr"):
@@ -870,7 +1018,6 @@ def tela_bsr_erb(client, spread_id):
 
 def tela_busca(client, spread_id):
     render_header()
-    st.divider()
     
     termo = st.text_input("Buscar texto (mín 3 chars):")
     
@@ -895,7 +1042,6 @@ def tela_busca(client, spread_id):
 
 def tela_tabela_ute(client, spread_id):
     render_header()
-    st.divider()
     
     # JavaScript para copiar
     st.markdown("""
@@ -946,6 +1092,7 @@ try:
         tela_selecao_evento(client_g)
     else:
         sp_id = st.session_state.spreadsheet_id
+        # Passa o cliente para todas as telas se necessário
         if st.session_state.view == 'main_menu': tela_menu_principal(client_g, sp_id)
         elif st.session_state.view == 'consultar': tela_consultar(client_g, sp_id)
         elif st.session_state.view == 'inserir': tela_inserir(client_g, sp_id)
