@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import streamlit as st
 import pandas as pd
 import gspread
@@ -12,8 +11,8 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 # ================= AJUSTES RÁPIDOS (estilo) =================
-BTN_HEIGHT = "5.12em"   # Altura de TODOS os botões
-BTN_GAP    = "3px"      # Espaçamento vertical unificado
+BTN_HEIGHT = "4.5em"   # Altura de TODOS os botões
+BTN_GAP    = "2.1px"      # Espaçamento vertical unificado
 ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"] 
 # ============================================================
 
@@ -37,29 +36,29 @@ def _normalize_text(s: str) -> str:
     s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
     return s.strip().lower()
 
-# --- MAPA DA CIDADE (Lógica Estrita) ---
-def get_city_map_url(evento_nome):
-    """Retorna URL do Maps baseada no nome do evento/planilha"""
-    nome = _normalize_text(evento_nome)
-    
-    # Mapeamento conforme solicitado
-    if "campina grande" in nome: 
-        return "https://www.google.com/maps?q=Campina+Grande"
-    if "olinda" in nome: 
-        return "https://www.google.com/maps?q=Olinda"
-    if "recife" in nome: 
-        return "https://www.google.com/maps?q=Recife"
-    if "rj" in nome or "rio" in nome: 
-        return "https://www.google.com/maps?q=Rio+de+Janeiro"
-    if "sp" in nome or "paulo" in nome: 
-        return "https://www.google.com/maps?q=Sao+Paulo"
+# --- MAPA DA CIDADE (Busca Dinâmica de Coordenadas) ---
+def get_city_map_url(_client, spreadsheet_id):
+    """Busca lat/long nas células AE3/AE4 de qualquer aba de estação e retorna URL do Maps"""
+    try:
+        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
+        # Tenta encontrar a primeira aba que não seja de sistema para colher a coordenada central
+        abas_estacoes = [ws for ws in planilha.worksheets() if ws.title not in ABAS_SISTEMA]
         
-    # Fallbacks genéricos antigos
-    if "belem" in nome or "cop" in nome: return "https://www.google.com/maps?q=Belem"
-    if "manaus" in nome: return "https://www.google.com/maps?q=Manaus"
-    if "brasilia" in nome or "df" in nome: return "https://www.google.com/maps?q=Brasilia"
-    
-    # Padrão
+        if abas_estacoes:
+            aba = abas_estacoes[0]
+            # Busca Lat em AE3 (Linha 3, Col 31) e Long em AE4 (Linha 4, Col 31)
+            lat = aba.cell(3, 31).value
+            lon = aba.cell(4, 31).value
+            
+            if lat and lon:
+                # Limpa possíveis espaços ou vírgulas
+                lat = str(lat).replace(',', '.').strip()
+                lon = str(lon).replace(',', '.').strip()
+                return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+    except:
+        pass
+        
+    # Fallback caso não encontre coordenadas
     return "https://www.google.com/maps"
 
 IDENT_OPCOES = [
@@ -125,106 +124,162 @@ def listar_abas_estacoes(_client, spreadsheet_id):
         return []
 
 # --- HEADER ---
-def render_header(imagem: str = "anatel.png", show_logout: bool = False):
-    img_b64 = _img_b64(imagem)
-    img_tag = f'<img class="hdr-img" src="data:image/png;base64,{img_b64}" alt="Logo Anatel">' if img_b64 else ""
+def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
+    # Carrega imagens
+    b64_esq = _img_b64(imagem_esq)
+    tag_esq = f'<img class="hdr-img" src="data:image/png;base64,{b64_esq}" alt="Logo Esq">' if b64_esq else ""
+    
+    b64_dir = _img_b64(imagem_dir)
+    tag_dir = f'<img class="hdr-img" src="data:image/png;base64,{b64_dir}" alt="Logo Dir">' if b64_dir else ""
     
     evento_atual = st.session_state.get('evento_nome', '')
     
-    c1, c2 = st.columns([1.5, 8.5])
+    # AJUSTE 1: Proporção [1, 2, 1]
+    # Dá o dobro do espaço para o título (2) em relação às laterais (1), evitando quebra de linha ou aperto.
+    c1, c2, c3 = st.columns([1, 2, 1])
     
     with c1:
-        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:100%; padding-right:10px;">{img_tag}</div>', unsafe_allow_html=True)
+        # AJUSTE 2: Margem negativa reduzida para -45px (era -75px)
+        # Aproxima a imagem sem jogar ela em cima do texto
+        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:60px; margin-right: -40px; z-index: 2; position: relative;">{tag_esq}</div>', unsafe_allow_html=True)
     
     with c2:
+        # Título Central
         st.markdown(
             f"""
-            <div style="text-align: center;">
-                <h2 style="margin:0; color:#1A311F; font-weight:800; font-size: 1.6rem; line-height: 1.1; margin-bottom: 0px; text-shadow: 1px 1px 0 rgba(255,255,255,.35);">{TITULO_PRINCIPAL}</h2>
+            <div style="text-align: center; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 35px; position: relative; z-index: 1;">
+                <div style="margin:0; color:#1A311F; font-weight:800; font-size: 1.5rem; line-height: 1.0; text-shadow: 1px 1px 0 rgba(255,255,255,.35); font-family: sans-serif; white-space: nowrap;">{TITULO_PRINCIPAL}</div>
             </div>
             """, 
             unsafe_allow_html=True
         )
         
+        # Subtítulo (Botão/Texto)
         if evento_atual:
-            sc1, sc2, sc3 = st.columns([1, 8, 1]) 
-            with sc2:
-                 st.markdown(f"<h4 style='color:#2E7D32; margin:0; font-size: 0.90rem; margin-top: -8px; font-weight: 600; letter-spacing: -0.3px; text-align: center;'>Evento selecionado: {evento_atual}</h4>", unsafe_allow_html=True)
-            with sc3:
-                if show_logout:
-                    if st.button("🔄", key="btn_trocar_evento", help="Trocar Evento"):
-                        for key in ['evento_nome', 'spreadsheet_id', 'view']:
-                            if key in st.session_state:
-                                del st.session_state[key]
-                        st.rerun()
+            if show_logout:
+                # O CSS 'st-key-btn_trocar_evento_texto' cuida da centralização
+                if st.button(f"Evento selecionado: {evento_atual} 🔄", key="btn_trocar_evento_texto", help="Clique para trocar de evento"):
+                    for key in ['evento_nome', 'spreadsheet_id', 'view']:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+            else:
+                st.markdown(
+                    f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: 2px; letter-spacing: -0.3px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
+                    unsafe_allow_html=True
+                )
+    
+    with c3:
+        # AJUSTE 3: Margem negativa reduzida para -45px
+        content = tag_dir if tag_dir else ""
+        st.markdown(f'<div style="display:flex; justify-content:flex-start; align-items:center; height:60px; margin-left: -45px; z-index: 2; position: relative;">{content}</div>', unsafe_allow_html=True)
 
-    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <hr style='
+            margin-top: -10px !important; 
+            margin-bottom: 10px !important; 
+            border: 0; 
+            border-top: 1px solid #ccc;
+            position: relative; 
+            z-index: 1;
+        '>
+        """, 
+        unsafe_allow_html=True
+    )
 
 # --- CSS ---
 st.markdown(f"""
 <style>
   :root{{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
-  .block-container {{ max-width: 760px; padding-top: .45rem; padding-bottom: .55rem; margin: 0 auto; }}
+  
+  /* --- 1. CONFIGURAÇÃO GERAL --- */
+  .block-container {{ 
+      max-width: 760px; 
+      padding-top: 1rem; 
+      padding-bottom: 2rem; 
+      margin: 0 auto;
+  }}
   .stApp {{ background-color: #F1F8E9; }}
-  
   #MainMenu, footer, header {{ visibility: hidden; }}
-  div[data-testid="stHorizontalBlock"] {{ gap: 0rem !important; align-items: center; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
-  
-  /* Imagem no Header */
   .hdr-img {{ height: 46px; }} 
-
-  /* Linha divisória */
   hr {{ margin-top: 0 !important; margin-bottom: 1rem !important; }}
 
-  /* Botões Principais (Azuis) */
-  .stButton > button, .app-btn, div[data-testid="stLinkButton"] a {{
-    width:100%; height: var(--btn-height); min-height: var(--btn-height);
-    font-size: var(--btn-font) !important; font-weight:600 !important;
-    border-radius:8px !important; border: 3.4px solid #54515c !important;
-    color: white !important; background: linear-gradient(to bottom, #14337b, #4464A7) !important;
+  /* --- 2. BOTÕES PADRÃO (AZUIS) --- */
+  /* Aplica estilo apenas aos botões que NÃO SÃO o de troca de evento */
+  .stButton:not(.st-key-btn_trocar_evento_texto) > button, 
+  .app-btn, 
+  div[data-testid="stLinkButton"] a {{
+    width: 100% !important; /* CORREÇÃO: Era 110%, agora é 100% para não vazar para a direita */
+    height: var(--btn-height); 
+    min-height: var(--btn-height);
+    font-size: var(--btn-font) !important; 
+    font-weight: 600 !important;
+    border-radius: 8px !important; 
+    border: 3.4px solid #54515c !important;
+    color: white !important; 
+    background: linear-gradient(to bottom, #14337b, #4464A7) !important;
     box-shadow: 2px 2px 5px rgba(0,0,0,.3) !important;
-    margin: 0 0 var(--btn-gap) 0 !important;
-    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto var(--btn-gap) auto !important; /* CORREÇÃO: 'auto' nas laterais garante o centro */
+    display: flex; 
+    align-items: center; 
+    justify-content: center;
     text-decoration: none !important;
   }}
-  .stButton > button:hover, div[data-testid="stLinkButton"] a:hover {{ 
-    filter: brightness(1.03) !important; transform: translateY(-2px) !important; 
-  }}
   
-  /* ESTILO ESPECIAL: Botão de Formulário (Registrar/Salvar) */
+  /* Botão especial de Salvar (Formulário) */
   div[data-testid="stForm"] .stButton > button:hover {{
     background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
     border-color: #7cb342 !important;
     color: white !important;
-    filter: brightness(1.05) !important;
   }}
 
-  /* ESTILO DO BOTÃO DE TROCA (🔄) */
-  div[data-testid="stColumn"]:nth-of-type(2) div[data-testid="stColumn"]:nth-of-type(3) button {{
-    height: 28px !important; 
-    min-height: 28px !important;
-    width: 28px !important;
-    padding: 0 !important;
-    font-size: 1.0rem !important;
-    border: 1px solid #2E7D32 !important;
+  /* --- 3. ESTILO DO BOTÃO "TEXTO" (TROCA DE EVENTO) - CENTRALIZAÇÃO TOTAL --- */
+  
+  /* ALVO: O container que envolve o botão específico */
+  div.stElementContainer:has(div.st-key-btn_trocar_evento_texto),
+  div.st-key-btn_trocar_evento_texto {{
+    display: flex !important;
+    width: 100% !important;
+    justify-content: center !important; /* Centraliza horizontalmente */
+    align-items: center !important;
+  }}
+
+  /* ESTILO: Transforma o botão em texto */
+  div.st-key-btn_trocar_evento_texto button {{
     background: transparent !important;
-    color: #2E7D32 !important;
+    border: none !important;
     box-shadow: none !important;
-    margin-top: -12px !important;
-  }}
-  div[data-testid="stColumn"]:nth-of-type(2) div[data-testid="stColumn"]:nth-of-type(3) button:hover {{
-    background: #e8f5e9 !important;
-    transform: scale(1.1) !important;
+    color: #2E7D32 !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    padding: 0 !important;
+    margin: 0 auto !important; /* Margem automática para garantir centro */
+    height: auto !important;
+    min-height: 0px !important;
+    width: auto !important;
   }}
 
-  /* Botões Vermelhos */
+  /* Hover */
+  div.st-key-btn_trocar_evento_texto button:hover {{
+    color: #1b5e20 !important;
+    text-decoration: underline !important;
+    transform: scale(1.05) !important;
+    background: transparent !important;
+  }}
+  
+  div.st-key-btn_trocar_evento_texto button p {{
+    font-size: 0.85rem !important; font-weight: 600 !important;
+    margin: 0 !important; padding: 0 !important;
+  }}
+
+  /* --- 4. OUTROS ESTILOS --- */
   #marker-vermelho {{ display: none; }}
   div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(-n+4) .stButton > button {{
     background: linear-gradient(to bottom, #c62828, #e53935) !important; border-color: #a92222 !important;
   }}
   
-  /* Botões Verdes (Tradutor e MAPA) */
   div[data-testid="stLinkButton"] a[href*="translate.google.com"],
   div[data-testid="stLinkButton"] a[href*="maps.google"] {{
     background: linear-gradient(to bottom, #2e7d32, #4caf50) !important; border-color: #1b5e20 !important;
@@ -239,7 +294,6 @@ st.markdown(f"""
   .confirm-warning{{ background: linear-gradient(to bottom, #f0ad4e, #ec971f); color:#333 !important; font-weight:600; text-align:center; padding:1rem; border-radius:8px; margin-bottom:1rem; border: 1px solid #d58512; }}
   .info-green {{ background: linear-gradient(to bottom, #1b5e20, #2e7d32); color: #fff; font-weight: 700; text-align: center; padding: .8rem 1rem; border-radius: 8px; margin: .25rem 0 1rem; }}
   
-  /* Tabela UTE */
   .ute-table {{ width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }}
   .ute-table th, .ute-table td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
   .ute-table th {{ background-color: #f2f2f2; color: #333; }}
@@ -319,7 +373,7 @@ def carregar_dados_ute(_client, spreadsheet_id):
         for row in matriz[1:]:
             if len(row) > 7:
                 dados.append({
-                    "País": row[0], "Frequência (MHz)": row[4],
+                    "País/Entidade": row[0], "Frequência (MHz)": row[4],
                     "Largura (kHz)": row[5], "Processo SEI": row[7]
                 })
         df = pd.DataFrame(dados)
@@ -714,6 +768,33 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
     if not resultados: return pd.DataFrame()
     return pd.concat(resultados, ignore_index=True)
 
+def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
+    """Renderiza os dados de uma linha de forma organizada e apenas leitura"""
+    c1, c2 = st.columns(2)
+    
+    # Tratamento de campos comuns para evitar erros de nomes de colunas diferentes
+    data_val = row.get("Data", row.get("Dia", ""))
+    hora_val = row.get("HH:mm", row.get("Hora", ""))
+    freq_val = row.get("Frequência (MHz)", row.get("Frequência", ""))
+    local_val = row.get("Local", row.get("Local/Região", row.get("Aba/Origem", "")))
+    obs_val = row.get("Ocorrência (observações)", row.get("Observações/Detalhes/Contatos", ""))
+
+    with c1:
+        st.text_input("Origem/Aba", value=str(row.get("Aba/Origem", "")), disabled=True, key=f"{key_prefix}_orig")
+        st.text_input("Local/Estação", value=str(local_val), disabled=True, key=f"{key_prefix}_loc")
+        st.text_input("Data", value=str(data_val), disabled=True, key=f"{key_prefix}_dt")
+        st.text_input("Hora", value=str(hora_val), disabled=True, key=f"{key_prefix}_hr")
+        st.text_input("Frequência (MHz)", value=str(freq_val), disabled=True, key=f"{key_prefix}_frq")
+
+    with c2:
+        st.text_input("Identificação", value=str(row.get("Identificação", "")), disabled=True, key=f"{key_prefix}_ident")
+        st.text_input("Situação", value=str(row.get("Situação", "")), disabled=True, key=f"{key_prefix}_sit")
+        st.text_input("Fiscal", value=str(row.get("Fiscal", "")), disabled=True, key=f"{key_prefix}_fisc")
+        st.text_input("Processo SEI", value=str(row.get("Processo SEI UTE", row.get("Processo SEI ou Ato UTE", ""))), disabled=True, key=f"{key_prefix}_sei")
+        st.text_input("ID", value=str(row.get("ID", "")), disabled=True, key=f"{key_prefix}_id")
+
+    st.text_area("Observações/Ocorrência", value=str(obs_val), disabled=True, key=f"{key_prefix}_obs")
+
 # ========================= TELAS =========================
 
 def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
@@ -798,29 +879,36 @@ def tela_menu_principal(client, spread_id):
 
     label_tratar = f"**📝 TRATAR** emissões pendentes ({total})"
     
-    # URL Dinâmica do Mapa (Lógica Estrita)
-    cidade_atual = st.session_state.get('evento_nome', '')
-    link_mapa = get_city_map_url(cidade_atual)
+    # URL Dinâmica do Mapa
+    link_mapa = get_city_map_url(client, spread_id)
 
-    _, center_col, _ = st.columns([1, 2, 1])
-    with center_col:
-        _, button_col, _ = st.columns([0.5, 9, 0.5])
-        with button_col:
-            st.markdown('<div id="marker-vermelho"></div>', unsafe_allow_html=True)
-            if st.button("**📋 INSERIR** emissão verificada em campo", use_container_width=True, key="btn_inserir"):
-                st.session_state.view = 'inserir'; st.rerun()
-            if st.button(label_tratar, use_container_width=True, key="btn_consultar"):
-                st.session_state.view = 'consultar'; st.rerun()
-            if st.button("**📵 REGISTRAR** Jammer ou ERB Fake", use_container_width=True, key="btn_bsr"):
-                st.session_state.view = 'bsr_erb'; st.rerun()
-            if st.button("**🔎 PESQUISAR** emissões cadastradas", use_container_width=True, key="btn_buscar"):
-                st.session_state.view = 'busca'; st.rerun()
-            if st.button("🗒️ **CONSULTAR** Atos de UTE", use_container_width=True, key="btn_ute"):
-                st.session_state.view = 'tabela_ute'; st.rerun()
+    # --- CORREÇÃO DE CENTRALIZAÇÃO ---
+    # Usamos apenas uma camada de colunas: [1, 2, 1]
+    # Isso centraliza matematicamente os botões no meio da tela (50% de largura)
+    # sem o desvio causado pelas margens da coluna interna anterior.
+    _, button_col, _ = st.columns([1, 2, 1])
+    
+    with button_col:
+        st.markdown('<div id="marker-vermelho"></div>', unsafe_allow_html=True)
+        
+        if st.button("**📋 INSERIR** emissão verificada em campo", use_container_width=True, key="btn_inserir"):
+            st.session_state.view = 'inserir'; st.rerun()
             
-            # Botão renomeado para "Mapa da Cidade" com link estrito
-            st.link_button("🗺️ **Mapa da Cidade**", link_mapa, use_container_width=True)
-            st.link_button("🌍 **Tradutor de Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
+        if st.button(label_tratar, use_container_width=True, key="btn_consultar"):
+            st.session_state.view = 'consultar'; st.rerun()
+            
+        if st.button("**📵 REGISTRAR** Jammer ou ERB Fake", use_container_width=True, key="btn_bsr"):
+            st.session_state.view = 'bsr_erb'; st.rerun()
+            
+        if st.button("**🔎 PESQUISAR** emissões cadastradas", use_container_width=True, key="btn_buscar"):
+            st.session_state.view = 'busca'; st.rerun()
+            
+        if st.button("🗒️ **CONSULTAR** Atos de UTE", use_container_width=True, key="btn_ute"):
+            st.session_state.view = 'tabela_ute'; st.rerun()
+        
+        # Botões de Links
+        st.link_button("🗺️ **Mapa da Cidade**", link_mapa, use_container_width=True)
+        st.link_button("🌍 **Tradutor de Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
 
 def tela_consultar(client, spread_id):
     render_header()
@@ -1027,18 +1115,50 @@ def tela_busca(client, spread_id):
     abas_sel = st.multiselect("Abas:", abas_ops, default=abas_ops)
     
     if st.button("Consultar", use_container_width=True):
-        if len(termo) < 3: st.warning("Texto muito curto")
+        termo_clean = termo.strip()
+        if len(termo_clean) < 3: 
+            st.warning("Digite pelo menos 3 caracteres para consultar.")
         else:
             with st.spinner("Buscando..."):
-                res = _buscar_por_texto_livre(client, spread_id, termo, abas_sel)
-            if res.empty: st.info("Nada encontrado.")
+                res = _buscar_por_texto_livre(client, spread_id, termo_clean, abas_sel)
+            
+            if res.empty: 
+                st.info("Nenhum resultado encontrado.")
             else:
-                st.success(f"{len(res)} resultados.")
-                for i, r in res.iterrows():
-                    with st.expander(f"{r.get('Aba/Origem')} | {r.get('Frequência (MHz)', '')} MHz | {r.get('Data','')}"):
-                        st.json(r.to_dict())
+                st.success(f"Resultados encontrados: {len(res)}")
+                
+                for i, (_, row) in enumerate(res.iterrows(), start=1):
+                    # --- LÓGICA DE CONSTRUÇÃO DO CABEÇALHO ---
+                    cabecalho = []
+                    aba_origem = row.get("Aba/Origem", "")
+                    
+                    # Tenta pegar Localização
+                    loc = row.get("Local", row.get("Local/Região", row.get("Estação", "")))
+                    if not loc and aba_origem: loc = aba_origem
+                    if loc: cabecalho.append(str(loc))
+                    
+                    # Tenta pegar Data
+                    dt = row.get("Data", row.get("Dia", ""))
+                    if dt: cabecalho.append(str(dt))
+                    
+                    # Tenta pegar Frequência
+                    fr = row.get("Frequência (MHz)", row.get("Frequência", ""))
+                    if fr: cabecalho.append(f"{fr} MHz")
+                    
+                    # ID
+                    id_val = row.get("ID", "")
+                    if id_val: cabecalho.append(f"ID {id_val}")
+                    
+                    titulo_expander = " | ".join(cabecalho) if cabecalho else f"Resultado #{i}"
 
-    if botao_voltar(): st.session_state.view = 'main_menu'; st.rerun()
+                    with st.expander(titulo_expander):
+                        # Gera um prefixo único para os widgets não conflitarem
+                        key_prefix = f"busca_{i}_{id_val}"
+                        render_ocorrencia_readonly(row, key_prefix=key_prefix)
+
+    if botao_voltar(key="voltar_busca"): 
+        st.session_state.view = 'main_menu'
+        st.rerun()
 
 def tela_tabela_ute(client, spread_id):
     render_header()
@@ -1063,10 +1183,10 @@ def tela_tabela_ute(client, spread_id):
     
     df = carregar_dados_ute(client, spread_id)
     if not df.empty:
-        html = "<table class='ute-table'><thead><tr><th>País</th><th>Freq (MHz)</th><th>BW (kHz)</th><th>Processo SEI</th></tr></thead><tbody>"
+        html = "<table class='ute-table'><thead><tr><th>País/Entidade</th><th>Freq (MHz)</th><th>BW (kHz)</th><th>Processo SEI</th></tr></thead><tbody>"
         for _, row in df.iterrows():
             proc = str(row['Processo SEI'])
-            html += f"<tr><td>{row['País']}</td><td>{row['Frequência (MHz)']}</td><td>{row['Largura (kHz)']}</td>"
+            html += f"<tr><td>{row['País/Entidade']}</td><td>{row['Frequência (MHz)']}</td><td>{row['Largura (kHz)']}</td>"
             html += f"<td class='copyable-cell' onclick='copyToClipboard(\"{proc}\", this)'>{proc}</td></tr>"
         html += "</tbody></table>"
         st.markdown(html, unsafe_allow_html=True)
