@@ -18,14 +18,14 @@ ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"]
 
 # --- CONFIG DA PÁGINA ---
 st.set_page_config(
-    page_title="App Grandes Eventos",
+    page_title="AppGrandesEventos",
     page_icon="anatel.png",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
 # --- CONSTANTES ---
-TITULO_PRINCIPAL = "App Grandes Eventos"
+TITULO_PRINCIPAL = "AppGrandesEventos"
 OBRIG = ":red[**\\***]"
 
 # --- HELPER: NORMALIZAR TEXTO ---
@@ -141,14 +141,14 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     with c1:
         # AJUSTE 2: Margem negativa reduzida para -45px (era -75px)
         # Aproxima a imagem sem jogar ela em cima do texto
-        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:60px; margin-right: -40px; z-index: 2; position: relative;">{tag_esq}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:60px; margin-right: -52px; z-index: 2; position: relative;">{tag_esq}</div>', unsafe_allow_html=True)
     
     with c2:
         # Título Central
         st.markdown(
             f"""
             <div style="text-align: center; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 35px; position: relative; z-index: 1;">
-                <div style="margin:0; color:#1A311F; font-weight:800; font-size: 1.5rem; line-height: 1.0; text-shadow: 1px 1px 0 rgba(255,255,255,.35); font-family: sans-serif; white-space: nowrap;">{TITULO_PRINCIPAL}</div>
+                <div style="margin:0; color:#1A311F; font-weight:800; font-size: 1.41rem; line-height: 1.0; text-shadow: 1px 1px 0 rgba(255,255,255,.35); font-family: sans-serif; white-space: nowrap;">{TITULO_PRINCIPAL}</div>
             </div>
             """, 
             unsafe_allow_html=True
@@ -172,7 +172,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     with c3:
         # AJUSTE 3: Margem negativa reduzida para -45px
         content = tag_dir if tag_dir else ""
-        st.markdown(f'<div style="display:flex; justify-content:flex-start; align-items:center; height:60px; margin-left: -45px; z-index: 2; position: relative;">{content}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; justify-content:flex-start; align-items:center; height:60px; margin-left: -55px; z-index: 2; position: relative;">{content}</div>', unsafe_allow_html=True)
 
     st.markdown(
         """
