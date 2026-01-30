@@ -141,7 +141,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     with c1:
         # AJUSTE 2: Margem negativa reduzida para -45px (era -75px)
         # Aproxima a imagem sem jogar ela em cima do texto
-        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:60px; margin-right: -52px; z-index: 2; position: relative;">{tag_esq}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:60px; margin-right: -55px; z-index: 2; position: relative;">{tag_esq}</div>', unsafe_allow_html=True)
     
     with c2:
         # Título Central
@@ -172,7 +172,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     with c3:
         # AJUSTE 3: Margem negativa reduzida para -45px
         content = tag_dir if tag_dir else ""
-        st.markdown(f'<div style="display:flex; justify-content:flex-start; align-items:center; height:60px; margin-left: -55px; z-index: 2; position: relative;">{content}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="display:flex; justify-content:flex-start; align-items:center; height:60px; margin-left: -58px; z-index: 2; position: relative;">{content}</div>', unsafe_allow_html=True)
 
     st.markdown(
         """
