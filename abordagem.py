@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 # ================= AJUSTES RÁPIDOS (estilo) =================
-BTN_HEIGHT = "4.5em"   # Altura de TODOS os botões
+BTN_HEIGHT = "4.2em"   # Altura de TODOS os botões
 BTN_GAP    = "2.1px"      # Espaçamento vertical unificado
 ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"] 
 # ============================================================
@@ -123,9 +123,7 @@ def listar_abas_estacoes(_client, spreadsheet_id):
     except:
         return []
 
-# --- HEADER (Versão Responsiva) ---
 def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
-    # Carrega imagens em Base64
     b64_esq = _img_b64(imagem_esq)
     tag_esq = f'<img class="hdr-img" src="data:image/png;base64,{b64_esq}" alt="Logo Esq">' if b64_esq else ""
     
@@ -134,7 +132,6 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     
     evento_atual = st.session_state.get('evento_nome', '')
 
-    # Renderiza Logos e Título em Grid Responsivo
     st.markdown(
         f"""
         <div class="header-grid">
@@ -146,28 +143,25 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         unsafe_allow_html=True
     )
 
-    # Renderiza Subtítulo ou Botão de Logout LOGO ABAIXO do cabeçalho
     if evento_atual:
         if show_logout:
-            # Botão funcional do Streamlit para logoff
             if st.button(f"Evento selecionado: {evento_atual} 🔄", key="btn_trocar_evento_texto", help="Clique para trocar de evento"):
                 for key in ['evento_nome', 'spreadsheet_id', 'view']:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
         else:
-            # Apenas texto
             st.markdown(
                 f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -5px; margin-bottom: 5px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
                 unsafe_allow_html=True
             )
 
-    # Linha divisória
+    # AQUI: Margem inferior reduzida para 2px
     st.markdown(
         """
         <hr style='
             margin-top: 5px !important; 
-            margin-bottom: 10px !important; 
+            margin-bottom: 2px !important; 
             border: 0; 
             border-top: 1px solid #ccc;
         '>
@@ -190,60 +184,42 @@ st.markdown(f"""
   .stApp {{ background-color: #F1F8E9; }}
   #MainMenu, footer, header {{ visibility: hidden; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
-  hr {{ margin-top: 0 !important; margin-bottom: 1rem !important; }}
+  hr {{ margin-top: 0 !important; margin-bottom: 0 !important; }} /* Zerado aqui também */
 
   /* --- 2. NOVO CABEÇALHO (RESPONSIVO) --- */
   .header-grid {{
       display: grid;
-      grid-template-columns: 1fr auto 1fr; /* Divide: Espaço | Título | Espaço */
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
       gap: 10px;
       margin-bottom: 5px;
       width: 100%;
   }}
   
-  .hdr-img {{ 
-      height: 55px; 
-      object-fit: contain; 
-  }}
+  .hdr-img {{ height: 55px; object-fit: contain; }}
   
   .hdr-title {{
-      margin: 0; 
-      color: #1A311F; 
-      font-weight: 800; 
-      font-size: 1.5rem; 
-      line-height: 1.1; 
-      text-shadow: 1px 1px 0 rgba(255,255,255,.35); 
-      font-family: sans-serif; 
-      text-align: center;
-      white-space: normal; /* Permite quebrar linha se precisar */
+      margin: 0; color: #1A311F; font-weight: 800; font-size: 1.5rem; 
+      line-height: 1.1; text-shadow: 1px 1px 0 rgba(255,255,255,.35); 
+      font-family: sans-serif; text-align: center; white-space: normal;
   }}
 
-  /* --- AJUSTE PARA CELULAR (Telas pequenas) --- */
   @media (max-width: 480px) {{
-      .hdr-img {{ height: 38px; }} /* Reduz imagem */
-      .hdr-title {{ font-size: 1.2rem; }} /* Reduz fonte */
+      .hdr-img {{ height: 38px; }}
+      .hdr-title {{ font-size: 1.2rem; }}
       .header-grid {{ gap: 5px; }}
   }}
 
-  /* --- 3. BOTÕES PADRÃO (AZUIS) --- */
-  .stButton:not(.st-key-btn_trocar_evento_texto) > button, 
-  .app-btn, 
-  div[data-testid="stLinkButton"] a {{
+  /* --- 3. BOTÕES PADRÃO --- */
+  .stButton:not(.st-key-btn_trocar_evento_texto) > button, .app-btn, div[data-testid="stLinkButton"] a {{
     width: 100% !important;
-    height: var(--btn-height); 
-    min-height: var(--btn-height);
-    font-size: var(--btn-font) !important; 
-    font-weight: 600 !important;
-    border-radius: 8px !important; 
-    border: 3.4px solid #54515c !important;
-    color: white !important; 
-    background: linear-gradient(to bottom, #14337b, #4464A7) !important;
+    height: var(--btn-height); min-height: var(--btn-height);
+    font-size: var(--btn-font) !important; font-weight: 600 !important;
+    border-radius: 8px !important; border: 3.4px solid #54515c !important;
+    color: white !important; background: linear-gradient(to bottom, #14337b, #4464A7) !important;
     box-shadow: 2px 2px 5px rgba(0,0,0,.3) !important;
     margin: 0 auto var(--btn-gap) auto !important;
-    display: flex; 
-    align-items: center; 
-    justify-content: center;
+    display: flex; align-items: center; justify-content: center;
     text-decoration: none !important;
   }}
   
@@ -253,43 +229,34 @@ st.markdown(f"""
     color: white !important;
   }}
 
-  /* --- 4. ESTILO DO BOTÃO "TEXTO" (TROCA DE EVENTO) --- */
+  /* --- 4. TEXTO DE TROCA DE EVENTO --- */
   div.stElementContainer:has(div.st-key-btn_trocar_evento_texto),
   div.st-key-btn_trocar_evento_texto {{
-    display: flex !important;
-    width: 100% !important;
-    justify-content: center !important;
-    align-items: center !important;
+    display: flex !important; width: 100% !important;
+    justify-content: center !important; align-items: center !important;
     margin-top: -5px;
   }}
-
   div.st-key-btn_trocar_evento_texto button {{
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    color: #2E7D32 !important;
-    font-size: 0.85rem !important;
-    font-weight: 600 !important;
-    padding: 0 !important;
-    margin: 0 auto !important;
-    height: auto !important;
-    min-height: 0px !important;
+    background: transparent !important; border: none !important; box-shadow: none !important;
+    color: #2E7D32 !important; font-size: 0.85rem !important; font-weight: 600 !important;
+    padding: 0 !important; margin: 0 auto !important; height: auto !important;
   }}
-
   div.st-key-btn_trocar_evento_texto button:hover {{
-    color: #1b5e20 !important;
-    text-decoration: underline !important;
-    transform: scale(1.05) !important;
-    background: transparent !important;
-  }}
-  
-  div.st-key-btn_trocar_evento_texto button p {{
-    font-size: 0.85rem !important; font-weight: 600 !important;
-    margin: 0 !important; padding: 0 !important;
+    color: #1b5e20 !important; text-decoration: underline !important;
+    transform: scale(1.05) !important; background: transparent !important;
   }}
 
-  /* --- 5. OUTROS ESTILOS --- */
+  /* --- 5. OUTROS ESTILOS & AJUSTE DE ESPAÇAMENTO --- */
+  
+  /* >>> ESTA É A REGRA MÁGICA PARA SUBIR OS BOTÕES <<< */
+  div[data-testid="stElementContainer"]:has(#marker-vermelho) {{
+      margin-top: -15px !important;  /* Puxa para cima em direção à linha */
+      margin-bottom: 0px !important;
+      line-height: 0;
+  }}
+
   #marker-vermelho {{ display: none; }}
+  
   div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(-n+4) .stButton > button {{
     background: linear-gradient(to bottom, #c62828, #e53935) !important; border-color: #a92222 !important;
   }}
