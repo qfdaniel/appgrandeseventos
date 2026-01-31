@@ -11,8 +11,8 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 # ================= AJUSTES RÁPIDOS (estilo) =================
-BTN_HEIGHT = "4.2em"   # Altura de TODOS os botões
-BTN_GAP    = "2.1px"      # Espaçamento vertical unificado
+BTN_HEIGHT = "4.0em"   # Altura de TODOS os botões
+BTN_GAP    = "2.0px"      # Espaçamento vertical unificado
 ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"] 
 # ============================================================
 
@@ -123,6 +123,7 @@ def listar_abas_estacoes(_client, spreadsheet_id):
     except:
         return []
 
+# HEADERS
 def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
     b64_esq = _img_b64(imagem_esq)
     tag_esq = f'<img class="hdr-img" src="data:image/png;base64,{b64_esq}" alt="Logo Esq">' if b64_esq else ""
@@ -156,6 +157,18 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
                 unsafe_allow_html=True
             )
 
+    # >>> ZERADO: Margens da linha zeradas para os botões encostarem <<<
+    st.markdown(
+        """
+        <hr style='
+            margin-top: 0px !important; 
+            margin-bottom: 0px !important; 
+            border: 0; 
+            border-top: 1px solid #ccc;
+        '>
+        """, 
+        unsafe_allow_html=True
+    )
     # AQUI: Margem inferior reduzida para 2px
     st.markdown(
         """
@@ -174,17 +187,17 @@ st.markdown(f"""
 <style>
   :root{{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
   
-  /* --- 1. CONFIGURAÇÃO GERAL --- */
+  /* --- 1. CONFIGURAÇÃO GERAL (TOPO REDUZIDO) --- */
   .block-container {{ 
       max-width: 760px; 
-      padding-top: 1rem; 
+      padding-top: 12px !important; /* <<< REDUZIDO O ESPAÇO DO TOPO */
       padding-bottom: 2rem; 
       margin: 0 auto;
   }}
   .stApp {{ background-color: #F1F8E9; }}
   #MainMenu, footer, header {{ visibility: hidden; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
-  hr {{ margin-top: 0 !important; margin-bottom: 0 !important; }} /* Zerado aqui também */
+  hr {{ margin-top: 0 !important; margin-bottom: 0 !important; }}
 
   /* --- 2. NOVO CABEÇALHO (RESPONSIVO) --- */
   .header-grid {{
@@ -192,7 +205,7 @@ st.markdown(f"""
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
       gap: 10px;
-      margin-bottom: 5px;
+      margin-bottom: 0px; /* Zerado para colar na linha */
       width: 100%;
   }}
   
@@ -246,11 +259,11 @@ st.markdown(f"""
     transform: scale(1.05) !important; background: transparent !important;
   }}
 
-  /* --- 5. OUTROS ESTILOS & AJUSTE DE ESPAÇAMENTO --- */
+  /* --- 5. REGRAS DE ESPAÇAMENTO (PUXAR PRA CIMA) --- */
   
-  /* >>> ESTA É A REGRA MÁGICA PARA SUBIR OS BOTÕES <<< */
+  /* >>> AQUI: Aumentei o negativo para subir mais os botões <<< */
   div[data-testid="stElementContainer"]:has(#marker-vermelho) {{
-      margin-top: -15px !important;  /* Puxa para cima em direção à linha */
+      margin-top: -28px !important; 
       margin-bottom: 0px !important;
       line-height: 0;
   }}
