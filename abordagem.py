@@ -12,7 +12,7 @@ from typing import Optional, Dict, List
 
 # ================= AJUSTES RÁPIDOS (estilo) =================
 BTN_HEIGHT = "3.8em"   # Altura de TODOS os botões
-BTN_GAP    = "0.8px"      # Espaçamento vertical unificado
+BTN_GAP    = "0.2px"      # Espaçamento vertical unificado
 ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"] 
 # ============================================================
 
