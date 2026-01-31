@@ -123,9 +123,9 @@ def listar_abas_estacoes(_client, spreadsheet_id):
     except:
         return []
 
-# --- HEADER ---
+# --- HEADER (Versão Responsiva) ---
 def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
-    # Carrega imagens
+    # Carrega imagens em Base64
     b64_esq = _img_b64(imagem_esq)
     tag_esq = f'<img class="hdr-img" src="data:image/png;base64,{b64_esq}" alt="Logo Esq">' if b64_esq else ""
     
@@ -133,56 +133,43 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     tag_dir = f'<img class="hdr-img" src="data:image/png;base64,{b64_dir}" alt="Logo Dir">' if b64_dir else ""
     
     evento_atual = st.session_state.get('evento_nome', '')
-    
-    # AJUSTE 1: Proporção [1, 2, 1]
-    # Dá o dobro do espaço para o título (2) em relação às laterais (1), evitando quebra de linha ou aperto.
-    c1, c2, c3 = st.columns([1, 2, 1])
-    
-    with c1:
-        # AJUSTE 2: Margem negativa reduzida para -45px (era -75px)
-        # Aproxima a imagem sem jogar ela em cima do texto
-        st.markdown(f'<div style="display:flex; justify-content:flex-end; align-items:center; height:60px; margin-right: -62px; z-index: 2; position: relative;">{tag_esq}</div>', unsafe_allow_html=True)
-    
-    with c2:
-        # Título Central
-        st.markdown(
-            f"""
-            <div style="text-align: center; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; height: 35px; position: relative; z-index: 1;">
-                <div style="margin:0; color:#1A311F; font-weight:800; font-size: 1.41rem; line-height: 1.0; text-shadow: 1px 1px 0 rgba(255,255,255,.35); font-family: sans-serif; white-space: nowrap;">{TITULO_PRINCIPAL}</div>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
-        
-        # Subtítulo (Botão/Texto)
-        if evento_atual:
-            if show_logout:
-                # O CSS 'st-key-btn_trocar_evento_texto' cuida da centralização
-                if st.button(f"Evento selecionado: {evento_atual} 🔄", key="btn_trocar_evento_texto", help="Clique para trocar de evento"):
-                    for key in ['evento_nome', 'spreadsheet_id', 'view']:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
-            else:
-                st.markdown(
-                    f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: 2px; letter-spacing: -0.3px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
-                    unsafe_allow_html=True
-                )
-    
-    with c3:
-        # AJUSTE 3: Margem negativa reduzida para -45px
-        content = tag_dir if tag_dir else ""
-        st.markdown(f'<div style="display:flex; justify-content:flex-start; align-items:center; height:60px; margin-left: -65px; z-index: 2; position: relative;">{content}</div>', unsafe_allow_html=True)
 
+    # Renderiza Logos e Título em Grid Responsivo
+    st.markdown(
+        f"""
+        <div class="header-grid">
+            <div style="text-align: right;">{tag_esq}</div>
+            <div class="hdr-title">{TITULO_PRINCIPAL}</div>
+            <div style="text-align: left;">{tag_dir}</div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Renderiza Subtítulo ou Botão de Logout LOGO ABAIXO do cabeçalho
+    if evento_atual:
+        if show_logout:
+            # Botão funcional do Streamlit para logoff
+            if st.button(f"Evento selecionado: {evento_atual} 🔄", key="btn_trocar_evento_texto", help="Clique para trocar de evento"):
+                for key in ['evento_nome', 'spreadsheet_id', 'view']:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
+        else:
+            # Apenas texto
+            st.markdown(
+                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -5px; margin-bottom: 5px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
+                unsafe_allow_html=True
+            )
+
+    # Linha divisória
     st.markdown(
         """
         <hr style='
-            margin-top: -10px !important; 
+            margin-top: 5px !important; 
             margin-bottom: 10px !important; 
             border: 0; 
             border-top: 1px solid #ccc;
-            position: relative; 
-            z-index: 1;
         '>
         """, 
         unsafe_allow_html=True
@@ -203,15 +190,47 @@ st.markdown(f"""
   .stApp {{ background-color: #F1F8E9; }}
   #MainMenu, footer, header {{ visibility: hidden; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
-  .hdr-img {{ height: 46px; }} 
   hr {{ margin-top: 0 !important; margin-bottom: 1rem !important; }}
 
-  /* --- 2. BOTÕES PADRÃO (AZUIS) --- */
-  /* Aplica estilo apenas aos botões que NÃO SÃO o de troca de evento */
+  /* --- 2. NOVO CABEÇALHO (RESPONSIVO) --- */
+  .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr auto 1fr; /* Divide: Espaço | Título | Espaço */
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 5px;
+      width: 100%;
+  }}
+  
+  .hdr-img {{ 
+      height: 55px; 
+      object-fit: contain; 
+  }}
+  
+  .hdr-title {{
+      margin: 0; 
+      color: #1A311F; 
+      font-weight: 800; 
+      font-size: 1.5rem; 
+      line-height: 1.1; 
+      text-shadow: 1px 1px 0 rgba(255,255,255,.35); 
+      font-family: sans-serif; 
+      text-align: center;
+      white-space: normal; /* Permite quebrar linha se precisar */
+  }}
+
+  /* --- AJUSTE PARA CELULAR (Telas pequenas) --- */
+  @media (max-width: 480px) {{
+      .hdr-img {{ height: 38px; }} /* Reduz imagem */
+      .hdr-title {{ font-size: 1.2rem; }} /* Reduz fonte */
+      .header-grid {{ gap: 5px; }}
+  }}
+
+  /* --- 3. BOTÕES PADRÃO (AZUIS) --- */
   .stButton:not(.st-key-btn_trocar_evento_texto) > button, 
   .app-btn, 
   div[data-testid="stLinkButton"] a {{
-    width: 100% !important; /* CORREÇÃO: Era 110%, agora é 100% para não vazar para a direita */
+    width: 100% !important;
     height: var(--btn-height); 
     min-height: var(--btn-height);
     font-size: var(--btn-font) !important; 
@@ -221,32 +240,29 @@ st.markdown(f"""
     color: white !important; 
     background: linear-gradient(to bottom, #14337b, #4464A7) !important;
     box-shadow: 2px 2px 5px rgba(0,0,0,.3) !important;
-    margin: 0 auto var(--btn-gap) auto !important; /* CORREÇÃO: 'auto' nas laterais garante o centro */
+    margin: 0 auto var(--btn-gap) auto !important;
     display: flex; 
     align-items: center; 
     justify-content: center;
     text-decoration: none !important;
   }}
   
-  /* Botão especial de Salvar (Formulário) */
   div[data-testid="stForm"] .stButton > button:hover {{
     background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
     border-color: #7cb342 !important;
     color: white !important;
   }}
 
-  /* --- 3. ESTILO DO BOTÃO "TEXTO" (TROCA DE EVENTO) - CENTRALIZAÇÃO TOTAL --- */
-  
-  /* ALVO: O container que envolve o botão específico */
+  /* --- 4. ESTILO DO BOTÃO "TEXTO" (TROCA DE EVENTO) --- */
   div.stElementContainer:has(div.st-key-btn_trocar_evento_texto),
   div.st-key-btn_trocar_evento_texto {{
     display: flex !important;
     width: 100% !important;
-    justify-content: center !important; /* Centraliza horizontalmente */
+    justify-content: center !important;
     align-items: center !important;
+    margin-top: -5px;
   }}
 
-  /* ESTILO: Transforma o botão em texto */
   div.st-key-btn_trocar_evento_texto button {{
     background: transparent !important;
     border: none !important;
@@ -255,13 +271,11 @@ st.markdown(f"""
     font-size: 0.85rem !important;
     font-weight: 600 !important;
     padding: 0 !important;
-    margin: 0 auto !important; /* Margem automática para garantir centro */
+    margin: 0 auto !important;
     height: auto !important;
     min-height: 0px !important;
-    width: auto !important;
   }}
 
-  /* Hover */
   div.st-key-btn_trocar_evento_texto button:hover {{
     color: #1b5e20 !important;
     text-decoration: underline !important;
@@ -274,7 +288,7 @@ st.markdown(f"""
     margin: 0 !important; padding: 0 !important;
   }}
 
-  /* --- 4. OUTROS ESTILOS --- */
+  /* --- 5. OUTROS ESTILOS --- */
   #marker-vermelho {{ display: none; }}
   div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(-n+4) .stButton > button {{
     background: linear-gradient(to bottom, #c62828, #e53935) !important; border-color: #a92222 !important;
