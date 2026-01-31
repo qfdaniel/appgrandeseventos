@@ -11,21 +11,21 @@ from pathlib import Path
 from typing import Optional, Dict, List
 
 # ================= AJUSTES RÁPIDOS (estilo) =================
-BTN_HEIGHT = "4.0em"   # Altura de TODOS os botões
+BTN_HEIGHT = "3.8em"   # Altura de TODOS os botões
 BTN_GAP    = "2.0px"      # Espaçamento vertical unificado
 ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"] 
 # ============================================================
 
 # --- CONFIG DA PÁGINA ---
 st.set_page_config(
-    page_title="AppGrandesEventos",
+    page_title=" AppGrandesEventos",
     page_icon="anatel.png",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
 # --- CONSTANTES ---
-TITULO_PRINCIPAL = "AppGrandesEventos"
+TITULO_PRINCIPAL = " AppGrandesEventos"
 OBRIG = ":red[**\\***]"
 
 # --- HELPER: NORMALIZAR TEXTO ---
@@ -123,8 +123,9 @@ def listar_abas_estacoes(_client, spreadsheet_id):
     except:
         return []
 
-# HEADERS
+# --- HEADER ---
 def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
+    # Carrega imagens
     b64_esq = _img_b64(imagem_esq)
     tag_esq = f'<img class="hdr-img" src="data:image/png;base64,{b64_esq}" alt="Logo Esq">' if b64_esq else ""
     
@@ -133,6 +134,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     
     evento_atual = st.session_state.get('evento_nome', '')
 
+    # Grid de Imagens e Título
     st.markdown(
         f"""
         <div class="header-grid">
@@ -144,6 +146,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         unsafe_allow_html=True
     )
 
+    # Subtítulo (Nome do evento) e Botão de Trocar
     if evento_atual:
         if show_logout:
             if st.button(f"Evento selecionado: {evento_atual} 🔄", key="btn_trocar_evento_texto", help="Clique para trocar de evento"):
@@ -157,23 +160,11 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
                 unsafe_allow_html=True
             )
 
-    # >>> ZERADO: Margens da linha zeradas para os botões encostarem <<<
-    st.markdown(
-        """
-        <hr style='
-            margin-top: 0px !important; 
-            margin-bottom: 0px !important; 
-            border: 0; 
-            border-top: 1px solid #ccc;
-        '>
-        """, 
-        unsafe_allow_html=True
-    )
     # AQUI: Margem inferior reduzida para 2px
     st.markdown(
         """
         <hr style='
-            margin-top: 5px !important; 
+            margin-top: 4px !important; 
             margin-bottom: 2px !important; 
             border: 0; 
             border-top: 1px solid #ccc;
@@ -187,26 +178,33 @@ st.markdown(f"""
 <style>
   :root{{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
   
-  /* --- 1. CONFIGURAÇÃO GERAL (TOPO REDUZIDO) --- */
+  /* --- 1. CONFIGURAÇÃO GERAL (TOPO) --- */
   .block-container {{ 
       max-width: 760px; 
-      padding-top: 12px !important; /* <<< REDUZIDO O ESPAÇO DO TOPO */
+      
+      /* 1. ESPAÇO ACIMA DO CABEÇALHO (TETO) */
+      padding-top: 10px !important;  /* <<< MEXA AQUI (Tente 0px, 10px, 20px...) */
+      
       padding-bottom: 2rem; 
       margin: 0 auto;
   }}
   .stApp {{ background-color: #F1F8E9; }}
   #MainMenu, footer, header {{ visibility: hidden; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
+  
+  /* Remove margens padrão de linhas horizontais */
   hr {{ margin-top: 0 !important; margin-bottom: 0 !important; }}
 
-  /* --- 2. NOVO CABEÇALHO (RESPONSIVO) --- */
+  /* --- 2. CABEÇALHO (DISTÂNCIA ATÉ A LINHA) --- */
   .header-grid {{
       display: grid;
       grid-template-columns: 1fr auto 1fr;
       align-items: center;
       gap: 10px;
-      margin-bottom: 0px; /* Zerado para colar na linha */
       width: 100%;
+      
+      /* 2. ESPAÇO ENTRE O TÍTULO/LOGOS E A LINHA DE BAIXO */
+      margin-bottom: 0px; /* <<< MEXA AQUI (Pode usar negativo ex: -5px) */
   }}
   
   .hdr-img {{ height: 55px; object-fit: contain; }}
@@ -259,11 +257,14 @@ st.markdown(f"""
     transform: scale(1.05) !important; background: transparent !important;
   }}
 
-  /* --- 5. REGRAS DE ESPAÇAMENTO (PUXAR PRA CIMA) --- */
+  /* --- 5. ESPAÇAMENTO DA LINHA PARA O PRIMEIRO BOTÃO --- */
   
-  /* >>> AQUI: Aumentei o negativo para subir mais os botões <<< */
+  /* O marker-vermelho é o primeiro item. Usamos margem negativa nele para puxar tudo pra cima */
   div[data-testid="stElementContainer"]:has(#marker-vermelho) {{
-      margin-top: -28px !important; 
+      
+      /* 3. ESPAÇO ENTRE A LINHA E O PRIMEIRO BOTÃO */
+      margin-top: -25px !important; /* <<< MEXA AQUI (Quanto mais negativo, mais sobe) */
+      
       margin-bottom: 0px !important;
       line-height: 0;
   }}
@@ -849,11 +850,20 @@ def tela_selecao_evento(client):
                     st.warning("Não foi possível ler o client_email do secrets.toml.")
             return
 
-        opcoes = ["Selecione..."] + list(eventos_dict.keys())
-        escolha = st.selectbox("Eventos Disponíveis:", opcoes)
+        # AQUI FOI A ALTERAÇÃO:
+        # 1. Removemos o ["Selecione..."] da lista, deixando apenas as chaves reais.
+        opcoes = list(eventos_dict.keys())
+        
+        # 2. Usamos index=None para o campo começar vazio e placeholder para o texto de ajuda.
+        escolha = st.selectbox(
+            "Eventos Disponíveis:", 
+            opcoes, 
+            index=None, 
+            placeholder="Selecione..."
+        )
 
-        # --- PULO AUTOMÁTICO ---
-        if escolha != "Selecione...":
+        # 3. Se 'escolha' não for None (usuário clicou em algo), avança.
+        if escolha:
             st.session_state['evento_nome'] = escolha
             st.session_state['spreadsheet_id'] = eventos_dict[escolha]
             st.session_state['view'] = 'main_menu'
