@@ -211,14 +211,29 @@ st.markdown(f"""
   .hdr-img {{ height: 55px; object-fit: contain; }}
   
   .hdr-title {{
-      margin: 0; color: #1A311F; font-weight: 800; font-size: 1.5rem; 
-      line-height: 1.1; text-shadow: 1px 1px 0 rgba(255,255,255,.35); 
-      font-family: sans-serif; text-align: center; white-space: normal;
+      margin: 0; 
+      color: #1A311F; 
+      font-weight: 800; 
+      
+      /* MUDANÇA 1: Tamanho aumentado de 1.5rem para 2rem (igual ao COP30) */
+      font-size: 1.7rem; 
+      
+      line-height: 1.1; 
+      
+      /* MUDANÇA 2: Sombra dupla (branca e preta) para dar o efeito de profundidade */
+      text-shadow: 1px 1px 0 rgba(255,255,255,.35), 0 1px 2px rgba(0,0,0,.28);
+      
+      font-family: sans-serif; 
+      text-align: center; 
+      white-space: normal;
   }}
 
   @media (max-width: 480px) {{
       .hdr-img {{ height: 38px; }}
-      .hdr-title {{ font-size: 1.2rem; }}
+      
+      /* MUDANÇA 3: Ajuste mobile proporcional ao COP30 */
+      .hdr-title {{ font-size: 1.3rem; }} 
+      
       .header-grid {{ gap: 5px; }}
   }}
 
@@ -242,17 +257,50 @@ st.markdown(f"""
   }}
 
   /* --- 4. TEXTO DE TROCA DE EVENTO --- */
+ /* --- 4. TEXTO DE TROCA DE EVENTO --- */
+  
+  /* Puxa a linha cinza para cima (reduz o espaço das setas azuis) */
+  div.stElementContainer:has(div.st-key-btn_trocar_evento_texto) {{
+    margin-bottom: -25px !important; 
+  }}
+
   div.stElementContainer:has(div.st-key-btn_trocar_evento_texto),
   div.st-key-btn_trocar_evento_texto {{
     display: flex !important; width: 100% !important;
     justify-content: center !important; align-items: center !important;
     margin-top: -5px;
   }}
+  
+  /* Estilo do botão em si */
   div.st-key-btn_trocar_evento_texto button {{
-    background: transparent !important; border: none !important; box-shadow: none !important;
-    color: #2E7D32 !important; font-size: 0.85rem !important; font-weight: 600 !important;
-    padding: 0 !important; margin: 0 auto !important; height: auto !important;
+    background: transparent !important; 
+    border: none !important; 
+    box-shadow: none !important;
+    color: #2E7D32 !important; 
+    font-size: 0.85rem !important; 
+    font-weight: 600 !important;
+    
+    /* --- ALTURA REDUZIDA --- */
+    min-height: 0px !important;    /* Destrava a altura mínima */
+    height: 26px !important;       /* Define a altura exata (ajuste se quiser menor) */
+    padding: 0 !important;         /* Remove enchimento */
+    
+    /* --- CENTRALIZAÇÃO --- */
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 auto !important;
   }}
+  
+  /* --- CORREÇÃO CRÍTICA DE CENTRALIZAÇÃO --- */
+  /* Remove a margem do texto interno (o <p>) que empurrava o texto para baixo */
+  div.st-key-btn_trocar_evento_texto button p {{
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1 !important;
+    padding-top: 2px !important; /* Ajuste fino ótico se parecer muito alto */
+  }}
+  
   div.st-key-btn_trocar_evento_texto button:hover {{
     color: #1b5e20 !important; text-decoration: underline !important;
     transform: scale(1.05) !important; background: transparent !important;
