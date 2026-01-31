@@ -18,14 +18,14 @@ ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"]
 
 # --- CONFIG DA PÁGINA ---
 st.set_page_config(
-    page_title=" AppGrandesEventos",
+    page_title="AppGrandesEventos",
     page_icon="anatel.png",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
 # --- CONSTANTES ---
-TITULO_PRINCIPAL = " AppGrandesEventos"
+TITULO_PRINCIPAL = "AppGrandesEventos"
 OBRIG = ":red[**\\***]"
 
 # --- HELPER: NORMALIZAR TEXTO ---
@@ -155,16 +155,17 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
                         del st.session_state[key]
                 st.rerun()
         else:
+            # AJUSTE 1: Reduzi a margem inferior do texto de 5px para 0px
             st.markdown(
-                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -5px; margin-bottom: 5px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
+                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -12px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
                 unsafe_allow_html=True
             )
 
-    # AQUI: Margem inferior reduzida para 2px
+    # AJUSTE 2: Margem superior negativa (-10px) para puxar a linha pra cima
     st.markdown(
         """
         <hr style='
-            margin-top: 4px !important; 
+            margin-top: -10px !important; 
             margin-bottom: 2px !important; 
             border: 0; 
             border-top: 1px solid #ccc;
@@ -263,7 +264,7 @@ st.markdown(f"""
   div[data-testid="stElementContainer"]:has(#marker-vermelho) {{
       
       /* 3. ESPAÇO ENTRE A LINHA E O PRIMEIRO BOTÃO */
-      margin-top: -25px !important; /* <<< MEXA AQUI (Quanto mais negativo, mais sobe) */
+      margin-top: -24.6px !important; /* <<< MEXA AQUI (Quanto mais negativo, mais sobe) */
       
       margin-bottom: 0px !important;
       line-height: 0;
