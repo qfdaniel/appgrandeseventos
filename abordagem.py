@@ -312,7 +312,7 @@ st.markdown(f"""
   div[data-testid="stElementContainer"]:has(#marker-vermelho) {{
       
       /* 3. ESPAÇO ENTRE A LINHA E O PRIMEIRO BOTÃO */
-      margin-top: -24.6px !important; /* <<< MEXA AQUI (Quanto mais negativo, mais sobe) */
+      margin-top: -12.5px !important; /* <<< MEXA AQUI (Quanto mais negativo, mais sobe) */
       
       margin-bottom: 0px !important;
       line-height: 0;
