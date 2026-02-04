@@ -69,7 +69,7 @@ IDENT_OPCOES = [
 FAIXA_OPCOES = ["FM", "SMA", "SMM", "SLP", "TV", "SMP", "GNSS", "Satélite", "Radiação Restrita"]
 
 # --- CONEXÃO GSPREAD ---
-@st.cache_resource(ttl=3600)
+@st.cache_resource(ttl=3600, show_spinner=False)
 def obter_cliente_gspread():
     try:
         info = st.secrets["gcp_service_account"]
@@ -113,7 +113,7 @@ def _img_b64(path: str) -> Optional[str]:
     return base64.b64encode(p.read_bytes()).decode("utf-8")
 
 # --- LISTAR ABAS ---
-@st.cache_data(ttl=150)
+@st.cache_data(ttl=150, show_spinner=False)
 def listar_abas_estacoes(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -406,7 +406,7 @@ def _valid_neg_coord(value: str) -> bool:
 
 # ===================== FUNÇÕES DE CARGA =====================
 
-@st.cache_data(ttl=150)
+@st.cache_data(ttl=150, show_spinner=False)
 def carregar_dados_ute(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -426,7 +426,7 @@ def carregar_dados_ute(_client, spreadsheet_id):
     except Exception as e:
         return pd.DataFrame()
 
-@st.cache_data(ttl=150)
+@st.cache_data(ttl=150, show_spinner=False)
 def carregar_pendencias_painel_mapeadas(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -489,7 +489,7 @@ def carregar_pendencias_painel_mapeadas(_client, spreadsheet_id):
     except Exception as e:
         return pd.DataFrame()
 
-@st.cache_data(ttl=150)
+@st.cache_data(ttl=150, show_spinner=False)
 def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -527,7 +527,7 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
     except Exception:
         return pd.DataFrame()
 
-@st.cache_data(ttl=150)
+@st.cache_data(ttl=150, show_spinner=False)
 def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
     """
     Busca pendências em TODAS as abas de estações.
@@ -637,7 +637,7 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
     except Exception:
         return pd.DataFrame()
 
-@st.cache_data(ttl=150)
+@st.cache_data(ttl=150, show_spinner=False)
 def carregar_todas_frequencias(_client, spreadsheet_id):
     frequencias_map = {}
     try:
@@ -791,7 +791,7 @@ def inserir_bsr_erb(_client, spreadsheet_id, tipo, regiao, lat, lon) -> str:
     except Exception as e:
         return f"ERRO: {e}"
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False)
 def carregar_opcoes_identificacao(_client, spreadsheet_id):
     """Tenta carregar opções de qualquer aba de estação disponível"""
     try:
@@ -938,10 +938,17 @@ def tela_selecao_evento(client):
 def tela_menu_principal(client, spread_id):
     render_header(show_logout=True)
 
-    df_painel = carregar_pendencias_painel_mapeadas(client, spread_id)
-    df_abord  = carregar_pendencias_abordagem_pendentes(client, spread_id)
-    df_estac  = carregar_pendencias_todas_estacoes(client, spread_id) # Nova busca
+    # --- LOADING ÚNICO E LIMPO ---
+    # Tudo que estiver dentro do 'with st.spinner' será carregado enquanto mostra apenas uma msg
+    with st.spinner("Carregando base de dados..."):
+        df_painel = carregar_pendencias_painel_mapeadas(client, spread_id)
+        df_abord  = carregar_pendencias_abordagem_pendentes(client, spread_id)
+        df_estac  = carregar_pendencias_todas_estacoes(client, spread_id)
+        
+        # URL Dinâmica do Mapa (também consome tempo)
+        link_mapa = get_city_map_url(client, spread_id)
     
+    # Cálculos rápidos (não precisa de spinner)
     count_painel = len(df_painel) if df_painel is not None else 0
     count_abord = len(df_abord) if df_abord is not None else 0
     count_estac = len(df_estac) if df_estac is not None else 0
@@ -949,13 +956,7 @@ def tela_menu_principal(client, spread_id):
 
     label_tratar = f"**📝 TRATAR** emissões pendentes ({total})"
     
-    # URL Dinâmica do Mapa
-    link_mapa = get_city_map_url(client, spread_id)
-
-    # --- CORREÇÃO DE CENTRALIZAÇÃO ---
-    # Usamos apenas uma camada de colunas: [1, 2, 1]
-    # Isso centraliza matematicamente os botões no meio da tela (50% de largura)
-    # sem o desvio causado pelas margens da coluna interna anterior.
+    # --- LAYOUT DOS BOTÕES ---
     _, button_col, _ = st.columns([1, 2, 1])
     
     with button_col:
@@ -1227,7 +1228,10 @@ def tela_busca(client, spread_id):
     
     # Abas dinâmicas
     abas_est = listar_abas_estacoes(client, spread_id)
-    abas_ops = ["PAINEL", "Abordagem"] + abas_est
+    
+    # --- ALTERAÇÃO: Removido "PAINEL" da lista. Fica apenas Abordagem + Estações ---
+    abas_ops = ["Abordagem"] + abas_est
+    
     abas_sel = st.multiselect("Abas:", abas_ops, default=abas_ops)
     
     if st.button("Consultar", use_container_width=True):
