@@ -1138,7 +1138,7 @@ def tela_inserir(client, spread_id):
         val_dia = dados_prev.get('Dia', datetime.now(ZoneInfo("America/Sao_Paulo")).date())
         val_hora = dados_prev.get('Hora', datetime.now(ZoneInfo("America/Sao_Paulo")).time())
         
-        dia = col1.date_input(f"Data {OBRIG}", value=val_dia)
+        dia = col1.date_input(f"Data {OBRIG}", value=val_dia, format="DD/MM/YYYY")
         hora = col2.time_input(f"Hora {OBRIG}", value=val_hora)
         fiscal = st.text_input(f"Fiscal {OBRIG}", value=dados_prev.get('Fiscal', ''))
         local = st.text_input("Local/Região", value=dados_prev.get('Local/Região', ''))
@@ -1148,15 +1148,15 @@ def tela_inserir(client, spread_id):
         freq = c3.number_input(f"Frequência (MHz) {OBRIG}", value=dados_prev.get('Frequência em MHz', 0.0), format="%.3f")
         larg = c4.number_input(f"Largura (kHz) {OBRIG}", value=dados_prev.get('Largura em kHz', 0.0), format="%.1f")
         
-        faixa = st.selectbox(f"Faixa {OBRIG}", FAIXA_OPCOES, index=None, placeholder="Selecione...")
+        faixa = st.selectbox(f"Faixa relacionada {OBRIG}", FAIXA_OPCOES, index=None, placeholder="Selecione...")
         ident = st.selectbox(f"Identificação {OBRIG}", idents, index=None, placeholder="Selecione...")
         
         ute = st.checkbox("UTE?", value=dados_prev.get('UTE?', False))
         proc = st.text_input("Processo SEI UTE", value=dados_prev.get('Processo SEI ou Ato UTE', ''))
-        obs = st.text_area(f"Observações {OBRIG}", value=dados_prev.get('Observações/Detalhes/Contatos', ''))
+        obs = st.text_area(f"Entidade Resp./Contato/Observações {OBRIG}", value=dados_prev.get('Observações/Detalhes/Contatos', ''))
         
         situ_opts = ["Pendente", "Concluído"]
-        situacao = st.selectbox(f"Situação {OBRIG}", situ_opts, index=0)
+        situacao = st.selectbox(f"Status desta emissão {OBRIG}", situ_opts, index=None, placeholder="Selecione o status")
         
         st.write("") 
 
@@ -1171,10 +1171,12 @@ def tela_inserir(client, spread_id):
             erros = []
             if not fiscal: erros.append("Fiscal")
             if freq <= 0: erros.append("Frequência")
+            if larg <= 0: erros.append("Largura")
             if not faixa: erros.append("Faixa")
             if not ident: erros.append("Identificação")
             if not obs: erros.append("Observações")
             if ute and not proc: erros.append("Processo SEI")
+            if not situacao: erros.append("Status desta emissão")
             
             if erros: st.error("Preencha: " + ", ".join(erros))
             else:
@@ -1195,7 +1197,7 @@ def tela_inserir(client, spread_id):
                     st.rerun()
                 else:
                     if inserir_emissao_I_W(client, spread_id, dados_submit):
-                        st.session_state.insert_success = "Emissão inserida com sucesso."
+                        st.session_state.insert_success = "Emissão inserida com sucesso. Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão"
                         if 'dados_para_salvar' in st.session_state:
                             del st.session_state['dados_para_salvar']
                         st.rerun()
