@@ -113,7 +113,7 @@ def _img_b64(path: str) -> Optional[str]:
     return base64.b64encode(p.read_bytes()).decode("utf-8")
 
 # --- LISTAR ABAS ---
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=150)
 def listar_abas_estacoes(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -157,7 +157,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         else:
             # AJUSTE 1: Reduzi a margem inferior do texto de 5px para 0px
             st.markdown(
-                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -12px; margin-bottom: -300px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
+                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -12px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
                 unsafe_allow_html=True
             )
 
@@ -186,7 +186,7 @@ st.markdown(f"""
       /* 1. ESPAÇO ACIMA DO CABEÇALHO (TETO) */
       padding-top: 10px !important;  /* <<< MEXA AQUI (Tente 0px, 10px, 20px...) */
       
-      padding-bottom: 2rem; 
+      padding-bottom: 1.9rem; 
       margin: 0 auto;
   }}
   .stApp {{ background-color: #F1F8E9; }}
@@ -406,7 +406,7 @@ def _valid_neg_coord(value: str) -> bool:
 
 # ===================== FUNÇÕES DE CARGA =====================
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=150)
 def carregar_dados_ute(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -426,7 +426,7 @@ def carregar_dados_ute(_client, spreadsheet_id):
     except Exception as e:
         return pd.DataFrame()
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=150)
 def carregar_pendencias_painel_mapeadas(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -489,7 +489,7 @@ def carregar_pendencias_painel_mapeadas(_client, spreadsheet_id):
     except Exception as e:
         return pd.DataFrame()
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=150)
 def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
@@ -527,12 +527,11 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
     except Exception:
         return pd.DataFrame()
 
-# --- NOVA FUNÇÃO: CARREGAR DE TODAS AS ESTAÇÕES ---
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=150)
 def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
     """
-    Busca pendências em TODAS as abas de estações (excluindo sistema).
-    Usa busca dinâmica de cabeçalhos.
+    Busca pendências em TODAS as abas de estações.
+    Versão OTIMIZADA para coluna padronizada 'Data'.
     """
     try:
         estacoes = listar_abas_estacoes(_client, spreadsheet_id)
@@ -544,29 +543,43 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
         for nome_aba in estacoes:
             try:
                 aba = planilha.worksheet(nome_aba)
-                # Pega tudo para garantir headers
                 matriz = aba.get_all_values()
                 if not matriz or len(matriz) < 2: continue
 
-                header, rows = matriz[0], matriz[1:]
+                # 1. BUSCA INTELIGENTE DO CABEÇALHO
+                # Procura linha que tenha "Situação" E ("ID" ou "Data")
+                header_idx = 0
+                for i in range(min(6, len(matriz))):
+                    row_txt = [str(c).lower().strip() for c in matriz[i]]
+                    # Verifica se é a linha de cabeçalho
+                    if any("situa" in x for x in row_txt) and (any("id" == x for x in row_txt) or any("data" in x for x in row_txt)):
+                        header_idx = i
+                        break
+                
+                header = matriz[header_idx]
+                rows = matriz[header_idx+1:]
+                
                 df = pd.DataFrame(rows, columns=header)
                 
-                # Helper local para achar colunas
                 def col_like(*checks):
                     return _first_col_match(df.columns, *[(lambda s, c=c: c(s)) for c in checks])
 
                 cols_map = {
-                    'situ': lambda s: s == "situação" or s == "situacao", # Coluna P
+                    'est': lambda s: "estação" in s or "estacao" in s or "local" in s,
+                    'situ': lambda s: "situação" in s or "situacao" in s,
                     'id': lambda s: s == "id",
                     'fiscal': lambda s: "fiscal" in s,
-                    'data': lambda s: s == "data" or s == "dia",
+                    
+                    # AQUI FICOU MAIS LIMPO: Busca apenas "data" ou "dia"
+                    'data': lambda s: "data" in s or "dia" in s,
+                    
                     'hora': lambda s: "hh" in s or "hora" in s,
                     'freq': lambda s: "frequência" in s or "frequencia" in s,
                     'bw': lambda s: "largura" in s,
                     'faixa': lambda s: "faixa" in s,
                     'ident': lambda s: "identificação" in s,
                     'autz': lambda s: "autorizado" in s,
-                    'ute': lambda s: s.strip() == "ute" or "ute?" in s,
+                    'ute': lambda s: "ute" in s,
                     'proc': lambda s: "processo" in s,
                     'obs': lambda s: "ocorrência" in s or "observa" in s,
                     'cient': lambda s: "ciente" in s,
@@ -575,28 +588,41 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
                 
                 found = {k: col_like(v) for k, v in cols_map.items()}
                 
-                # Requisito mínimo: Situação e ID
-                if not (found['situ'] and found['id']): continue
+                if not found['situ']: continue
 
-                # Filtra Pendentes
                 situ = df[found['situ']].astype(str).str.strip().str.lower()
                 pend = df[situ.eq("pendente")].copy()
                 if pend.empty: continue
 
-                # Monta DF padronizado
                 out = pd.DataFrame()
-                out["Local"] = nome_aba
-                out["EstacaoRaw"] = nome_aba
-                out["ID"] = pend[found['id']]
                 
+                # Preenchimento inteligente dos campos principais
+                out["ID"] = pend[found['id']] if found['id'] else (pend.iloc[:, 0] if len(pend.columns)>0 else "")
+                
+                if found['est']: out["Local"] = pend[found['est']]
+                elif len(pend.columns) > 1: out["Local"] = pend.iloc[:, 1]
+                else: out["Local"] = nome_aba
+                
+                out["EstacaoRaw"] = nome_aba
+
+                # Data agora deve ser encontrada facilmente
+                if found['data']:
+                    out["Data"] = pend[found['data']]
+                else:
+                    # Fallback de segurança ainda útil
+                    if len(pend.columns) > 3: out["Data"] = pend.iloc[:, 3] 
+                    elif len(pend.columns) > 1: out["Data"] = pend.iloc[:, 1]
+                    else: out["Data"] = ""
+
                 mappings = [
-                    ("Fiscal", 'fiscal'), ("Data", 'data'), ("HH:mm", 'hora'),
+                    ("Fiscal", 'fiscal'), ("HH:mm", 'hora'),
                     ("Frequência (MHz)", 'freq'), ("Largura (kHz)", 'bw'),
                     ("Faixa de Frequência Envolvida", 'faixa'), ("Identificação", 'ident'),
                     ("Autorizado?", 'autz'), ("UTE?", 'ute'), ("Processo SEI UTE", 'proc'),
                     ("Ocorrência (observações)", 'obs'), ("Alguém mais ciente?", 'cient'),
                     ("Interferente?", 'inter'), ("Situação", 'situ')
                 ]
+                
                 for dest, key in mappings:
                     out[dest] = pend[found[key]] if found[key] else ""
 
@@ -611,7 +637,7 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
     except Exception:
         return pd.DataFrame()
 
-@st.cache_data(ttl=180)
+@st.cache_data(ttl=150)
 def carregar_todas_frequencias(_client, spreadsheet_id):
     frequencias_map = {}
     try:
@@ -847,29 +873,22 @@ def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
         return st.button(label, use_container_width=True, key=key)
 
 def tela_selecao_evento(client):
-    """Tela inicial para escolha do evento (Planilha)"""
+    """Tela inicial para escolha do evento (Planilha) - OTIMIZADA COM CALLBACK"""
     
-    # CSS para centralizar a imagem gerada pelo st.image apenas nesta tela
+    # --- CSS Centralização ---
     st.markdown(
         """
         <style>
-            div[data-testid="stImage"] {
-                display: flex;
-                justify-content: center;
-            }
-            div[data-testid="stImage"] > img {
-                width: 170px !important;
-            }
+            div[data-testid="stImage"] { display: flex; justify-content: center; }
+            div[data-testid="stImage"] > img { width: 170px !important; }
         </style>
         """, 
         unsafe_allow_html=True
     )
 
-    # Layout de colunas para centralizar
     _, col_cent, _ = st.columns([1, 2, 1])
     
     with col_cent:
-        # Imagem reduzida em 15% (de 200px para 170px) e centralizada via CSS
         img_b64 = _img_b64("anatel.png")
         if img_b64:
             st.markdown(
@@ -888,35 +907,33 @@ def tela_selecao_evento(client):
         
         if not eventos_dict:
             st.error("Nenhuma planilha de 'Monitoração' encontrada.")
-            with st.expander("🛠️ Diagnóstico de Conexão"):
-                st.info("O robô não encontrou planilhas contendo 'Monitoração'.")
-                try:
-                    email_robo = st.secrets["gcp_service_account"]["client_email"]
-                    st.write("**Passo 1:** Copie o e-mail do robô abaixo:")
-                    st.code(email_robo, language="text")
-                    st.write("**Passo 2:** Vá na planilha do evento no Google Drive -> Compartilhar -> Cole esse e-mail como Editor.")
-                except:
-                    st.warning("Não foi possível ler o client_email do secrets.toml.")
+            # ... (seu código de erro continua igual aqui) ...
             return
 
-        # AQUI FOI A ALTERAÇÃO:
-        # 1. Removemos o ["Selecione..."] da lista, deixando apenas as chaves reais.
         opcoes = list(eventos_dict.keys())
         
-        # 2. Usamos index=None para o campo começar vazio e placeholder para o texto de ajuda.
-        escolha = st.selectbox(
+        # --- A MÁGICA DO CALLBACK ---
+        # Definimos uma função interna que roda ANTES da interface ser atualizada
+        def ao_selecionar():
+            # Pega o valor da session_state usando a key definida no selectbox
+            selecao = st.session_state.get("key_selecao_evento")
+            if selecao:
+                st.session_state['evento_nome'] = selecao
+                st.session_state['spreadsheet_id'] = eventos_dict[selecao]
+                st.session_state['view'] = 'main_menu'
+                # O Streamlit fará o rerun automaticamente após este callback
+
+        # O selectbox agora tem uma 'key' e um 'on_change'
+        st.selectbox(
             "Eventos Disponíveis:", 
             opcoes, 
             index=None, 
-            placeholder="Selecione..."
+            placeholder="Selecione...",
+            key="key_selecao_evento",  # Identificador único
+            on_change=ao_selecionar    # Chama a função acima IMEDIATAMENTE ao clicar
         )
-
-        # 3. Se 'escolha' não for None (usuário clicou em algo), avança.
-        if escolha:
-            st.session_state['evento_nome'] = escolha
-            st.session_state['spreadsheet_id'] = eventos_dict[escolha]
-            st.session_state['view'] = 'main_menu'
-            st.rerun()
+        
+        # NOTA: O bloco 'if escolha:' antigo foi removido, pois o 'on_change' cuida de tudo.
 
 def tela_menu_principal(client, spread_id):
     render_header(show_logout=True)
@@ -960,7 +977,7 @@ def tela_menu_principal(client, spread_id):
             st.session_state.view = 'tabela_ute'; st.rerun()
         
         # Botões de Links
-        st.link_button("🗺️ **Mapa da Cidade**", link_mapa, use_container_width=True)
+        st.link_button("🗺️ **VER Mapa da Cidade**", link_mapa, use_container_width=True)
         st.link_button("🌍 **Tradutor de Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
 
 def tela_consultar(client, spread_id):
@@ -1051,11 +1068,47 @@ def tela_consultar(client, spread_id):
 def tela_inserir(client, spread_id):
     render_header()
 
-    # --- ESTADOS DA TELA ---
-    if 'insert_success' in st.session_state:
-        st.success(st.session_state.insert_success)
-        del st.session_state.insert_success
+    # --- CSS: BOTÕES COLORIDOS + REMOÇÃO DE +/- EM NUMBERS ---
+    st.markdown("""
+    <style>
+    /* 1. ESTILO DO BOTÃO DE REGISTRAR (Azul -> Verde no Hover) */
+    div[data-testid="stForm"] button {
+        background: linear-gradient(to bottom, #14337b, #4464A7) !important;
+        border: 3.4px solid #54515c !important;
+        border-radius: 8px !important;
+        color: white !important;
+        font-weight: 600 !important;
+        font-size: 1.02em !important;
+        height: 3.8em !important;
+        box-shadow: 2px 2px 5px rgba(0,0,0,.3) !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    div[data-testid="stForm"] button:hover {
+        background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
+        border-color: #7cb342 !important;
+        color: white !important;
+        transform: scale(1.02);
+        box-shadow: 0px 4px 15px rgba(0,0,0,0.2) !important;
+    }
+    div[data-testid="stForm"] button:active, 
+    div[data-testid="stForm"] button:focus {
+        background: linear-gradient(to bottom, #7cb342, #9ccc65) !important;
+        border-color: #558b2f !important;
+        color: white !important;
+    }
 
+    /* 2. REMOVER OS BOTÕES + E - DOS CAMPOS NUMÉRICOS (Frequência/Largura) */
+    div[data-testid="stNumberInput"] button {
+        display: none !important;
+    }
+    /* Ajuste fino para evitar buraco onde ficavam os botões */
+    div[data-testid="stNumberInput"] > div {
+        border-right: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # --- Lógica de Confirmação de Frequência ---
     if st.session_state.get('confirm_freq_asked', False):
         dados = st.session_state.get('dados_para_salvar', {})
         regiao = st.session_state.get('regiao_existente', 'Desconhecida')
@@ -1064,7 +1117,7 @@ def tela_inserir(client, spread_id):
         c1, c2 = st.columns(2)
         if c1.button("Sim, Registrar"):
             inserir_emissao_I_W(client, spread_id, dados)
-            st.session_state.insert_success = "Emissão registrada!"
+            st.session_state.insert_success = "Emissão registrada com sucesso!"
             del st.session_state.confirm_freq_asked
             st.rerun()
         if c2.button("Não, Cancelar"):
@@ -1090,6 +1143,7 @@ def tela_inserir(client, spread_id):
         local = st.text_input("Local/Região", value=dados_prev.get('Local/Região', ''))
         
         c3, c4 = st.columns(2)
+        # step=0.0 ou step=None não removem os botões nativamente, por isso usamos o CSS acima
         freq = c3.number_input(f"Frequência (MHz) {OBRIG}", value=dados_prev.get('Frequência em MHz', 0.0), format="%.3f")
         larg = c4.number_input(f"Largura (kHz) {OBRIG}", value=dados_prev.get('Largura em kHz', 0.0), format="%.1f")
         
@@ -1103,6 +1157,13 @@ def tela_inserir(client, spread_id):
         situ_opts = ["Pendente", "Concluído"]
         situacao = st.selectbox(f"Situação {OBRIG}", situ_opts, index=0)
         
+        st.write("") 
+
+        # AVISO DE SUCESSO LOGO ACIMA DO BOTÃO
+        if 'insert_success' in st.session_state:
+            st.success(st.session_state.insert_success)
+            del st.session_state.insert_success
+
         submitted = st.form_submit_button("Registrar Emissão", use_container_width=True)
 
         if submitted:
@@ -1133,7 +1194,9 @@ def tela_inserir(client, spread_id):
                     st.rerun()
                 else:
                     if inserir_emissao_I_W(client, spread_id, dados_submit):
-                        st.session_state.insert_success = "Sucesso!"
+                        st.session_state.insert_success = "Emissão inserida com sucesso."
+                        if 'dados_para_salvar' in st.session_state:
+                            del st.session_state['dados_para_salvar']
                         st.rerun()
 
     if botao_voltar(): st.session_state.view = 'main_menu'; st.rerun()
@@ -1216,7 +1279,19 @@ def tela_busca(client, spread_id):
 def tela_tabela_ute(client, spread_id):
     render_header()
     
-    # JavaScript para copiar
+    # --- REMOVIDO st.divider() PARA EVITAR DUPLICIDADE ---
+    
+    # Título
+    evento_atual = st.session_state.get('evento_nome', 'Evento')
+    st.markdown(f"#### Atos de UTE - {evento_atual}") 
+    
+    # Aviso de girar celular
+    st.markdown(
+        "<p style='text-align: center; font-size: small; margin-top: -0.5rem; margin-bottom: 0.5rem; color: #555;'>(gire o celular ⟳)</p>", 
+        unsafe_allow_html=True
+    )
+    
+    # JavaScript para copiar (Mantido)
     st.markdown("""
     <script>
     function copyToClipboard(text, element) {
