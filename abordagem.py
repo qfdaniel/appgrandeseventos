@@ -494,36 +494,39 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         aba = planilha.worksheet("Abordagem")
+        # Busca o bloco de dados real da Abordagem (H:W)
         matriz = aba.get("H1:W")
         if not matriz or len(matriz) < 2: return pd.DataFrame()
 
         header, rows = matriz[0], matriz[1:]
         
         def get_col(idx_offset): 
-            return pd.Series([r[idx_offset] if len(r)>idx_offset else "" for r in rows])
+            return pd.Series([str(r[idx_offset]).strip() if len(r)>idx_offset else "" for r in rows])
 
         pend = pd.DataFrame({
-            "Local": get_col(1), # I
+            "ID": get_col(0),    # Coluna H
+            "Local": get_col(1), # Coluna I (Estação)
+            "Fiscal": get_col(2),# Coluna J
+            "Data": get_col(3),  # Coluna K
+            "HH:mm": get_col(4), # Coluna L
+            "Frequência (MHz)": get_col(5), # Coluna M
+            "Largura (kHz)": get_col(6),    # Coluna N
+            "Faixa de Frequência Envolvida": get_col(7), # Coluna O
+            "Identificação": get_col(8),    # Coluna P
+            "Autorizado?": get_col(9),      # Coluna Q
+            "UTE?": get_col(10),            # Coluna R
+            "Processo SEI UTE": get_col(11),# Coluna S
+            "Ocorrência (observações)": get_col(12), # Coluna T
+            "Alguém mais ciente?": get_col(13), # Coluna U
+            "Interferente?": get_col(14),   # Coluna V
+            "Situação": get_col(15),         # Coluna W
             "EstacaoRaw": "ABORDAGEM",
-            "ID": get_col(0),    # H
-            "Fiscal": get_col(2),# J
-            "Data": get_col(3),  # K
-            "HH:mm": get_col(4), # L
-            "Frequência (MHz)": get_col(5), # M
-            "Largura (kHz)": get_col(6),    # N
-            "Faixa de Frequência Envolvida": get_col(7), # O
-            "Identificação": "",
-            "Autorizado?": "", "UTE?": "", "Processo SEI UTE": "",
-            "Ocorrência (observações)": get_col(12), # T
-            "Alguém mais ciente?": get_col(13), # U
-            "Interferente?": get_col(14), # V
-            "Situação": get_col(15),      # W
             "Fonte": "ABORDAGEM",
         })
 
-        pend = pend[pend["Situação"].str.strip().str.lower().eq("pendente")].copy()
-        pend = pend.sort_values(by=["Local","Data"], kind="stable").reset_index(drop=True)
-        return pend
+        # Filtra apenas o que for 'Pendente' (ignora maiúsculas/minúsculas)
+        pend = pend[pend["Situação"].str.lower().str.strip() == "pendente"].copy()
+        return pend.sort_values(by=["Local","Data"], kind="stable").reset_index(drop=True)
     except Exception:
         return pd.DataFrame()
 
@@ -822,16 +825,30 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
             aba = planilha.worksheet(nome)
             all_vals = aba.get_all_values()
             if not all_vals: continue
-            df = pd.DataFrame(all_vals[1:], columns=all_vals[0])
-            df = df.iloc[:, ~df.columns.duplicated()]
             
-            # Concatena tudo numa string para busca
+            if nome == "Abordagem":
+                # Recorta apenas o banco de dados real (H a W -> índices 7 a 22)
+                header = all_vals[0][7:23]
+                rows = [r[7:23] for r in all_vals[1:]]
+                df = pd.DataFrame(rows, columns=header)
+                # Padroniza nomes para o buscador
+                df = df.rename(columns={
+                    "Estação": "Local",
+                    "Ocorrência (obsevações)": "Ocorrência (observações)"
+                })
+            else:
+                df = pd.DataFrame(all_vals[1:], columns=all_vals[0])
+                df = df.iloc[:, ~df.columns.duplicated()]
+            
+            df.insert(0, "Aba/Origem", nome)
+            df["Fonte"] = "BUSCA"
+            
+            # Busca em todas as colunas
             comb = df.fillna("").astype(str).agg(" ".join, axis=1)
             mask = comb.apply(lambda x: termos_norm in _normalize_text(x))
             
             achados = df[mask].copy()
             if not achados.empty:
-                achados.insert(0, "Aba/Origem", nome)
                 resultados.append(achados)
         except: continue
 
@@ -839,31 +856,34 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
     return pd.concat(resultados, ignore_index=True)
 
 def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
-    """Renderiza os dados de uma linha de forma organizada e apenas leitura"""
+    """Renderiza os dados de uma linha de forma organizada com todos os campos solicitados"""
     c1, c2 = st.columns(2)
     
-    # Tratamento de campos comuns para evitar erros de nomes de colunas diferentes
+    # Mapeamento flexível de nomes de colunas (Data, Freq, etc)
     data_val = row.get("Data", row.get("Dia", ""))
     hora_val = row.get("HH:mm", row.get("Hora", ""))
     freq_val = row.get("Frequência (MHz)", row.get("Frequência", ""))
-    local_val = row.get("Local", row.get("Local/Região", row.get("Aba/Origem", "")))
-    obs_val = row.get("Ocorrência (observações)", row.get("Observações/Detalhes/Contatos", ""))
-
+    bw_val   = row.get("Largura (kHz)", row.get("BW", ""))
+    
     with c1:
-        st.text_input("Origem/Aba", value=str(row.get("Aba/Origem", "")), disabled=True, key=f"{key_prefix}_orig")
-        st.text_input("Local/Estação", value=str(local_val), disabled=True, key=f"{key_prefix}_loc")
-        st.text_input("Data", value=str(data_val), disabled=True, key=f"{key_prefix}_dt")
-        st.text_input("Hora", value=str(hora_val), disabled=True, key=f"{key_prefix}_hr")
+        st.text_input("ID", value=str(row.get("ID", "")), disabled=True, key=f"{key_prefix}_id")
+        st.text_input("Local/Estação", value=str(row.get("Local", row.get("Estação", row.get("Aba/Origem", "")))), disabled=True, key=f"{key_prefix}_loc")
+        st.text_input("Fiscal", value=str(row.get("Fiscal", "")), disabled=True, key=f"{key_prefix}_fisc")
+        st.text_input("Data da identificação", value=str(data_val), disabled=True, key=f"{key_prefix}_dt")
+        st.text_input("Hora (HH:mm)", value=str(hora_val), disabled=True, key=f"{key_prefix}_hr")
         st.text_input("Frequência (MHz)", value=str(freq_val), disabled=True, key=f"{key_prefix}_frq")
 
     with c2:
+        st.text_input("Largura (kHz)", value=str(bw_val), disabled=True, key=f"{key_prefix}_bw")
+        st.text_input("Faixa de Frequência", value=str(row.get("Faixa de Frequência Envolvida", "")), disabled=True, key=f"{key_prefix}_faixa")
         st.text_input("Identificação", value=str(row.get("Identificação", "")), disabled=True, key=f"{key_prefix}_ident")
+        st.text_input("Autorizado?", value=str(row.get("Autorizado?", "")), disabled=True, key=f"{key_prefix}_autz")
+        st.text_input("Processo SEI UTE", value=str(row.get("Processo SEI UTE", row.get("Processo SEI", ""))), disabled=True, key=f"{key_prefix}_sei")
         st.text_input("Situação", value=str(row.get("Situação", "")), disabled=True, key=f"{key_prefix}_sit")
-        st.text_input("Fiscal", value=str(row.get("Fiscal", "")), disabled=True, key=f"{key_prefix}_fisc")
-        st.text_input("Processo SEI", value=str(row.get("Processo SEI UTE", row.get("Processo SEI ou Ato UTE", ""))), disabled=True, key=f"{key_prefix}_sei")
-        st.text_input("ID", value=str(row.get("ID", "")), disabled=True, key=f"{key_prefix}_id")
 
-    st.text_area("Observações/Ocorrência", value=str(obs_val), disabled=True, key=f"{key_prefix}_obs")
+    st.text_input("Alguém mais ciente?", value=str(row.get("Alguém mais ciente?", "")), disabled=True, key=f"{key_prefix}_cient")
+    st.text_area("Ocorrência (observações)", value=str(row.get("Ocorrência (observações)", row.get("Ocorrência (obsevações)", ""))), disabled=True, key=f"{key_prefix}_obs")
+    st.caption(f"Fonte: {row.get('Fonte', 'N/A')} | Aba Origem: {row.get('Aba/Origem', 'N/A')}")
 
 # ========================= TELAS =========================
 
