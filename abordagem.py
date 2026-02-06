@@ -174,20 +174,73 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         unsafe_allow_html=True
     )
 
-# --- CSS ---
+#/* --- CSS --- */#
 st.markdown(f"""
 <style>
-  :root{{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
+  :root {{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
   
-  /* --- 1. CONFIGURAÇÃO GERAL (TOPO) --- */
+  /* 1. CONFIGURAÇÃO GERAL (FUNDO) */
+  .stApp {{ 
+      background-color: #F1F8E9; 
+  }}
+
+  /* 2. FIXA COR PRETA EM FORMULÁRIOS E TEXTOS (PARA SAMSUNG) */
+  .stWidgetLabel, label, p, .stMarkdown {{
+      color: #000000 !important;
+  }}
+
+  /* Força fundo branco e letra PRETA dentro dos campos de entrada */
+  input, textarea, select, div[data-baseweb="select"] {{
+      color: #000000 !important;
+      background-color: #FFFFFF !important;
+      -webkit-text-fill-color: #000000 !important;
+  }}
+
+  /* 3. FORÇA FONTE BRANCA EM TODOS OS BOTÕES (INCLUINDO REGISTRAR/SUBMIT) */
+  /* Aplicamos a todos os botões, links e botões de formulário simultaneamente */
+  .stButton > button, 
+  .app-btn, 
+  div[data-testid="stLinkButton"] a,
+  button[data-testid="stFormSubmitButton"] {{
+      color: #FFFFFF !important;
+      -webkit-text-fill-color: #FFFFFF !important;
+  }}
+
   .block-container {{ 
       max-width: 760px; 
-      
-      /* 1. ESPAÇO ACIMA DO CABEÇALHO (TETO) */
-      padding-top: 10px !important;  /* <<< MEXA AQUI (Tente 0px, 10px, 20px...) */
-      
+      padding-top: 10px !important;
       padding-bottom: 1.9rem; 
       margin: 0 auto;
+  }}
+
+  /* 4. CORREÇÃO DE SINTAXE PARA GRID */
+  .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin-bottom: 0px;
+  }}
+
+  /* --- 4. CORREÇÃO DE SINTAXE PARA GRID --- */
+  .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin-bottom: 0px;
+  }}
+
+  /* --- CORREÇÃO DE SINTAXE PARA A GRID (CHAVES DOBRADAS) --- */
+  .header-grid {{
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin-bottom: 0px;
   }}
   .stApp {{ background-color: #F1F8E9; }}
   #MainMenu, footer, header {{ visibility: hidden; }}
