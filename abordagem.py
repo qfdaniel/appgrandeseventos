@@ -157,7 +157,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         else:
             # AJUSTE 1: Reduzi a margem inferior do texto de 5px para 0px
             st.markdown(
-                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -12px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
+                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -4px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
                 unsafe_allow_html=True
             )
 
@@ -436,20 +436,31 @@ def _first_row_where_col_empty(aba, col_letter: str, start_row: int = 2) -> int:
         if (col_vals[i] or "").strip() == "": return i + 1
     return len(col_vals) + 1
 
-def _next_sequential_id(aba, col_letter: str = "H", start_row: int = 2) -> int:
+def _next_sequential_id(aba, col_letter: str = "H", start_row: int = 2) -> str:
     col_idx = _col_to_index(col_letter)
-    try: col_vals = aba.col_values(col_idx)
-    except: col_vals = []
-    max_id = 0
+    try: 
+        col_vals = aba.col_values(col_idx)
+    except: 
+        col_vals = []
+    
+    max_num = 0
+    # Percorre os valores existentes para encontrar o maior número após "Abo-"
     for i, v in enumerate(col_vals, start=1):
         if i < start_row: continue
         s = (v or "").strip()
         if not s: continue
-        try:
-            n = int(s)
-            if n > max_id: max_id = n
-        except: pass
-    return max_id + 1 if max_id >= 0 else 1
+        
+        # Tenta extrair o número de formatos como "Abo-01", "Abo-1", etc.
+        match = re.search(r"Abo-(\d+)", s, re.IGNORECASE)
+        if match:
+            try:
+                n = int(match.group(1))
+                if n > max_num: max_num = n
+            except: pass
+            
+    proximo = max_num + 1
+    # Retorna no formato Abo-XX (com zero à esquerda se for menor que 10)
+    return f"Abo-{proximo:02d}"
 
 def _valid_neg_coord(value: str) -> bool:
     if value is None: return True
@@ -1050,9 +1061,9 @@ def tela_menu_principal(client, spread_id):
         if st.button("🗒️ **CONSULTAR** Atos de UTE", use_container_width=True, key="btn_ute"):
             st.session_state.view = 'tabela_ute'; st.rerun()
         
-        # Botões de Links
-        st.link_button("🗺️ **VER Mapa da Cidade**", link_mapa, use_container_width=True)
-        st.link_button("🌍 **Tradutor de Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
+        # ... dentro da função tela_menu_principal, na seção de Botões de Links:
+        st.link_button("🗺️ **Mapa da Região/Evento**", link_mapa, use_container_width=True)
+        st.link_button("🌍 **Tradutor de Texto/Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
 
 def tela_consultar(client, spread_id):
     render_header()
@@ -1145,7 +1156,6 @@ def tela_inserir(client, spread_id):
     # --- CSS: BOTÕES COLORIDOS + REMOÇÃO DE +/- EM NUMBERS ---
     st.markdown("""
     <style>
-    /* 1. ESTILO DO BOTÃO DE REGISTRAR (Azul -> Verde no Hover) */
     div[data-testid="stForm"] button {
         background: linear-gradient(to bottom, #14337b, #4464A7) !important;
         border: 3.4px solid #54515c !important;
@@ -1161,28 +1171,14 @@ def tela_inserir(client, spread_id):
         background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
         border-color: #7cb342 !important;
         color: white !important;
-        transform: scale(1.02);
-        box-shadow: 0px 4px 15px rgba(0,0,0,0.2) !important;
     }
-    div[data-testid="stForm"] button:active, 
-    div[data-testid="stForm"] button:focus {
-        background: linear-gradient(to bottom, #7cb342, #9ccc65) !important;
-        border-color: #558b2f !important;
-        color: white !important;
-    }
-
-    /* 2. REMOVER OS BOTÕES + E - DOS CAMPOS NUMÉRICOS (Frequência/Largura) */
     div[data-testid="stNumberInput"] button {
         display: none !important;
-    }
-    /* Ajuste fino para evitar buraco onde ficavam os botões */
-    div[data-testid="stNumberInput"] > div {
-        border-right: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    # --- Lógica de Confirmação de Frequência ---
+    # Lógica de Confirmação de Frequência Duplicada
     if st.session_state.get('confirm_freq_asked', False):
         dados = st.session_state.get('dados_para_salvar', {})
         regiao = st.session_state.get('regiao_existente', 'Desconhecida')
@@ -1191,19 +1187,16 @@ def tela_inserir(client, spread_id):
         c1, c2 = st.columns(2)
         if c1.button("Sim, Registrar"):
             inserir_emissao_I_W(client, spread_id, dados)
-            st.session_state.insert_success = "Emissão registrada com sucesso!"
+            st.session_state.insert_success = "Emissão inserida com sucesso! Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão."
             del st.session_state.confirm_freq_asked
             st.rerun()
         if c2.button("Não, Cancelar"):
             del st.session_state.confirm_freq_asked
-            st.info("Registro cancelado.")
             st.rerun()
         return
 
-    # --- FORMULÁRIO ---
     freqs_map = carregar_todas_frequencias(client, spread_id)
     idents = carregar_opcoes_identificacao(client, spread_id)
-    
     dados_prev = st.session_state.get('dados_para_salvar', {})
     
     with st.form("form_nova_emissao"):
@@ -1213,27 +1206,32 @@ def tela_inserir(client, spread_id):
         
         dia = col1.date_input(f"Data {OBRIG}", value=val_dia, format="DD/MM/YYYY")
         hora = col2.time_input(f"Hora {OBRIG}", value=val_hora)
+        
+        # DEFINIÇÃO DA VARIÁVEL FISCAL
         fiscal = st.text_input(f"Fiscal {OBRIG}", value=dados_prev.get('Fiscal', ''))
         local = st.text_input("Local/Região", value=dados_prev.get('Local/Região', ''))
         
         c3, c4 = st.columns(2)
-        # step=0.0 ou step=None não removem os botões nativamente, por isso usamos o CSS acima
         freq = c3.number_input(f"Frequência (MHz) {OBRIG}", value=dados_prev.get('Frequência em MHz', 0.0), format="%.3f")
         larg = c4.number_input(f"Largura (kHz) {OBRIG}", value=dados_prev.get('Largura em kHz', 0.0), format="%.1f")
         
         faixa = st.selectbox(f"Faixa relacionada {OBRIG}", FAIXA_OPCOES, index=None, placeholder="Selecione...")
         ident = st.selectbox(f"Identificação {OBRIG}", idents, index=None, placeholder="Selecione...")
         
+        # AJUSTE: Interferente com padrão "Selecione..."
+        interf_opts = ["Sim", "Não", "Indefinido"]
+        interferente = st.selectbox(f"Interferente? {OBRIG}", interf_opts, index=None, placeholder="Selecione...")
+        
         ute = st.checkbox("UTE?", value=dados_prev.get('UTE?', False))
-        proc = st.text_input("Processo SEI UTE", value=dados_prev.get('Processo SEI ou Ato UTE', ''))
+        
+        # AJUSTE: Nome do rótulo alterado
+        proc = st.text_input("Processo SEI ou Ato UTE", value=dados_prev.get('Processo SEI ou Ato UTE', ''))
+        
         obs = st.text_area(f"Entidade Resp./Contato/Observações {OBRIG}", value=dados_prev.get('Observações/Detalhes/Contatos', ''))
         
         situ_opts = ["Pendente", "Concluído"]
         situacao = st.selectbox(f"Status desta emissão {OBRIG}", situ_opts, index=None, placeholder="Selecione o status")
         
-        st.write("") 
-
-        # AVISO DE SUCESSO LOGO ACIMA DO BOTÃO
         if 'insert_success' in st.session_state:
             st.success(st.session_state.insert_success)
             del st.session_state.insert_success
@@ -1244,25 +1242,24 @@ def tela_inserir(client, spread_id):
             erros = []
             if not fiscal: erros.append("Fiscal")
             if freq <= 0: erros.append("Frequência")
-            if larg <= 0: erros.append("Largura")
             if not faixa: erros.append("Faixa")
             if not ident: erros.append("Identificação")
+            if not interferente: erros.append("Interferente?")
             if not obs: erros.append("Observações")
-            if ute and not proc: erros.append("Processo SEI")
-            if not situacao: erros.append("Status desta emissão")
+            if not situacao: erros.append("Status")
             
-            if erros: st.error("Preencha: " + ", ".join(erros))
+            if erros: 
+                st.error("Preencha: " + ", ".join(erros))
             else:
                 dados_submit = {
                     'Dia': dia, 'Hora': hora, 'Fiscal': fiscal, 'Local/Região': local,
                     'Frequência em MHz': freq, 'Largura em kHz': larg, 'Faixa de Frequência': faixa,
                     'Identificação': ident, 'UTE?': ute, 'Processo SEI ou Ato UTE': proc,
                     'Observações/Detalhes/Contatos': obs, 'Situação': situacao,
-                    'Autorizado? (Q)': 'Indefinido', 'Interferente?': 'Indefinido'
+                    'Autorizado? (Q)': 'Indefinido', 'Interferente?': interferente
                 }
                 st.session_state.dados_para_salvar = dados_submit
                 
-                # Check Duplicidade
                 f_check = round(float(freq), 3)
                 if f_check in freqs_map:
                     st.session_state.confirm_freq_asked = True
@@ -1270,12 +1267,14 @@ def tela_inserir(client, spread_id):
                     st.rerun()
                 else:
                     if inserir_emissao_I_W(client, spread_id, dados_submit):
-                        st.session_state.insert_success = "Emissão inserida com sucesso. Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão"
+                        st.session_state.insert_success = "Emissão inserida com sucesso! Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão."
                         if 'dados_para_salvar' in st.session_state:
                             del st.session_state['dados_para_salvar']
                         st.rerun()
 
-    if botao_voltar(): st.session_state.view = 'main_menu'; st.rerun()
+    if botao_voltar(): 
+        st.session_state.view = 'main_menu'
+        st.rerun()
 
 def tela_bsr_erb(client, spread_id):
     render_header()
