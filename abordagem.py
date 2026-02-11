@@ -401,6 +401,49 @@ st.markdown(f"""
 
 # ===================== HELPERS =====================
 
+def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
+    """Verifica se a frequência existe nas abas de Abordagem, UTE ou Estações"""
+    if not freq_digitada or freq_digitada <= 0:
+        return None
+    
+    try:
+        f_val = round(float(freq_digitada), 3)
+        planilha = abrir_planilha_selecionada(client, spreadsheet_id)
+        
+        # 1. Verificar na Abordagem (Coluna M)
+        aba_abord = planilha.worksheet("Abordagem")
+        # Buscamos os valores da coluna M (índice 13)
+        col_m = aba_abord.col_values(13) 
+        for val in col_m[1:]: # Pula cabeçalho
+            try:
+                if round(float(str(val).replace(",", ".")), 3) == f_val:
+                    return "Abordagem"
+            except: continue
+
+        # 2. Verificar na Tabela UTE (Coluna E)
+        aba_ute = planilha.worksheet("Tabela UTE")
+        col_e = aba_ute.col_values(5)
+        for val in col_e[1:]:
+            try:
+                if round(float(str(val).replace(",", ".")), 3) == f_val:
+                    return "Tabela UTE"
+            except: continue
+
+        # 3. Verificar nas abas de Estações (Coluna F)
+        estacoes = listar_abas_estacoes(client, spreadsheet_id)
+        for nome_est in estacoes:
+            aba_est = planilha.worksheet(nome_est)
+            col_f = aba_est.col_values(6) # Geralmente freq está na F nas remotas
+            for val in col_f[1:]:
+                try:
+                    if round(float(str(val).replace(",", ".")), 3) == f_val:
+                        return f"Estação {nome_est}"
+                except: continue
+                
+    except Exception:
+        pass
+    return None
+
 def _first_col_match(columns, *preds):
     for c in columns:
         s = (c or "").strip().lower()
@@ -469,6 +512,41 @@ def _valid_neg_coord(value: str) -> bool:
     return re.match(r"^-\d+\.\d{6}$", v) is not None
 
 # ===================== FUNÇÕES DE CARGA =====================
+
+def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
+    if freq_digitada <= 0:
+        return None
+    try:
+        f_val = round(float(freq_digitada), 3)
+        planilha = abrir_planilha_selecionada(client, spreadsheet_id)
+        
+        # 1. Verifica na Abordagem (Coluna M)
+        aba_abord = planilha.worksheet("Abordagem")
+        col_m = aba_abord.col_values(13)
+        for val in col_m[1:]:
+            try:
+                if round(float(str(val).replace(",", ".")), 3) == f_val: return "Abordagem"
+            except: continue
+
+        # 2. Verifica na Tabela UTE (Coluna E)
+        aba_ute = planilha.worksheet("Tabela UTE")
+        col_e = aba_ute.col_values(5)
+        for val in col_e[1:]:
+            try:
+                if round(float(str(val).replace(",", ".")), 3) == f_val: return "Tabela UTE"
+            except: continue
+
+        # 3. Verifica em todas as abas de Estações (Coluna F)
+        estacoes = listar_abas_estacoes(client, spreadsheet_id)
+        for nome_est in estacoes:
+            aba_est = planilha.worksheet(nome_est)
+            col_f = aba_est.col_values(6)
+            for val in col_f[1:]:
+                try:
+                    if round(float(str(val).replace(",", ".")), 3) == f_val: return f"Estação {nome_est}"
+                except: continue
+    except: pass
+    return None
 
 @st.cache_data(ttl=150, show_spinner=False)
 def carregar_dados_ute(_client, spreadsheet_id):
@@ -1153,53 +1231,53 @@ def tela_consultar(client, spread_id):
 def tela_inserir(client, spread_id):
     render_header()
 
-    # --- CSS: BOTÕES COLORIDOS + REMOÇÃO DE +/- EM NUMBERS ---
+    # --- BLOCO CSS (LIMPO E SEM BARRAS EXTRAS) ---
     st.markdown("""
     <style>
-    div[data-testid="stForm"] button {
+    /* Remove botões + e - dos campos numéricos */
+    div[data-testid="stNumberInput"] button { display: none !important; }
+    
+    /* Estiliza o botão de Registrar (Azul Gradiente) */
+    .stButton > button {
         background: linear-gradient(to bottom, #14337b, #4464A7) !important;
         border: 3.4px solid #54515c !important;
         border-radius: 8px !important;
         color: white !important;
         font-weight: 600 !important;
-        font-size: 1.02em !important;
         height: 3.8em !important;
-        box-shadow: 2px 2px 5px rgba(0,0,0,.3) !important;
         transition: all 0.2s ease-in-out !important;
     }
-    div[data-testid="stForm"] button:hover {
+    
+    /* Efeito Hover Verde */
+    .stButton > button:hover {
         background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
         border-color: #7cb342 !important;
         color: white !important;
     }
-    div[data-testid="stNumberInput"] button {
-        display: none !important;
-    }
     </style>
     """, unsafe_allow_html=True)
 
-    # Lógica de Confirmação de Frequência Duplicada
-    if st.session_state.get('confirm_freq_asked', False):
-        dados = st.session_state.get('dados_para_salvar', {})
-        regiao = st.session_state.get('regiao_existente', 'Desconhecida')
-        st.markdown(f"<div class='confirm-warning'>ATENÇÃO: Frequência <strong>{dados.get('Frequência em MHz')} MHz</strong> já existe em <strong>{regiao}</strong>.<br>Registrar mesmo assim?</div>", unsafe_allow_html=True)
-        
-        c1, c2 = st.columns(2)
-        if c1.button("Sim, Registrar"):
-            inserir_emissao_I_W(client, spread_id, dados)
-            st.session_state.insert_success = "Emissão inserida com sucesso! Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão."
-            del st.session_state.confirm_freq_asked
-            st.rerun()
-        if c2.button("Não, Cancelar"):
-            del st.session_state.confirm_freq_asked
-            st.rerun()
-        return
+    # --- LÓGICA DE CALLBACK ---
+    def check_freq_callback():
+        # Buscamos o valor diretamente do estado da widget
+        f_digitada = st.session_state.freq_input_key
+        if f_digitada > 0:
+            # Força a execução da busca global
+            st.session_state.aba_conflito = verificar_frequencia_global(client, spread_id, f_digitada)
+        else:
+            st.session_state.aba_conflito = None
+        # Limpa mensagem de sucesso anterior
+        st.session_state.insert_success = None
 
-    freqs_map = carregar_todas_frequencias(client, spread_id)
+    # Inicialização de estados
+    if "aba_conflito" not in st.session_state: st.session_state.aba_conflito = None
+    if "insert_success" not in st.session_state: st.session_state.insert_success = None
+
     idents = carregar_opcoes_identificacao(client, spread_id)
     dados_prev = st.session_state.get('dados_para_salvar', {})
-    
-    with st.form("form_nova_emissao"):
+
+    # --- CONTAINER NATIVO COM BORDA ---
+    with st.container(border=True):
         col1, col2 = st.columns(2)
         val_dia = dados_prev.get('Dia', datetime.now(ZoneInfo("America/Sao_Paulo")).date())
         val_hora = dados_prev.get('Hora', datetime.now(ZoneInfo("America/Sao_Paulo")).time())
@@ -1207,49 +1285,54 @@ def tela_inserir(client, spread_id):
         dia = col1.date_input(f"Data {OBRIG}", value=val_dia, format="DD/MM/YYYY")
         hora = col2.time_input(f"Hora {OBRIG}", value=val_hora)
         
-        # DEFINIÇÃO DA VARIÁVEL FISCAL
         fiscal = st.text_input(f"Fiscal {OBRIG}", value=dados_prev.get('Fiscal', ''))
         local = st.text_input("Local/Região", value=dados_prev.get('Local/Região', ''))
         
         c3, c4 = st.columns(2)
-        freq = c3.number_input(f"Frequência (MHz) {OBRIG}", value=dados_prev.get('Frequência em MHz', 0.0), format="%.3f")
-        larg = c4.number_input(f"Largura (kHz) {OBRIG}", value=dados_prev.get('Largura em kHz', 0.0), format="%.1f")
         
+        # O SEGRED: Usar a key no session_state para garantir que o callback leia o valor atual
+        freq = c3.number_input(
+            f"Frequência (MHz) {OBRIG}", 
+            value=float(dados_prev.get('Frequência em MHz', 0.0)), 
+            format="%.3f",
+            key="freq_input_key",
+            on_change=check_freq_callback
+        )
+        larg = c4.number_input(f"Largura (kHz) {OBRIG}", value=float(dados_prev.get('Largura em kHz', 0.0)), format="%.1f")
+        
+        # Popup Vermelho Médio
+        if st.session_state.aba_conflito:
+            st.markdown(
+                f"""
+                <div style="background-color: #d32f2f; color: white; padding: 12px; border-radius: 8px; 
+                            text-align: center; font-weight: bold; margin: 15px 0; border: 2px solid #b71c1c;">
+                    ⚠️ Essa frequência consta na base de dados - Aba: {st.session_state.aba_conflito} (este é apenas um aviso)
+                </div>
+                """, unsafe_allow_html=True)
+
         faixa = st.selectbox(f"Faixa relacionada {OBRIG}", FAIXA_OPCOES, index=None, placeholder="Selecione...")
         ident = st.selectbox(f"Identificação {OBRIG}", idents, index=None, placeholder="Selecione...")
-        
-        # AJUSTE: Interferente com padrão "Selecione..."
-        interf_opts = ["Sim", "Não", "Indefinido"]
-        interferente = st.selectbox(f"Interferente? {OBRIG}", interf_opts, index=None, placeholder="Selecione...")
+        interferente = st.selectbox(f"Interferente? {OBRIG}", ["Sim", "Não", "Indefinido"], index=None, placeholder="Selecione...")
         
         ute = st.checkbox("UTE?", value=dados_prev.get('UTE?', False))
-        
-        # AJUSTE: Nome do rótulo alterado
         proc = st.text_input("Processo SEI ou Ato UTE", value=dados_prev.get('Processo SEI ou Ato UTE', ''))
-        
         obs = st.text_area(f"Entidade Resp./Contato/Observações {OBRIG}", value=dados_prev.get('Observações/Detalhes/Contatos', ''))
         
-        situ_opts = ["Pendente", "Concluído"]
-        situacao = st.selectbox(f"Status desta emissão {OBRIG}", situ_opts, index=None, placeholder="Selecione o status")
-        
-        if 'insert_success' in st.session_state:
+        situacao = st.selectbox(f"Status desta emissão {OBRIG}", ["Pendente", "Concluído"], index=None, placeholder="Selecione o status")
+
+        # Mensagem de sucesso persistente
+        if st.session_state.insert_success:
             st.success(st.session_state.insert_success)
-            del st.session_state.insert_success
 
-        submitted = st.form_submit_button("Registrar Emissão", use_container_width=True)
-
-        if submitted:
+        if st.button("Registrar Emissão", use_container_width=True):
             erros = []
             if not fiscal: erros.append("Fiscal")
             if freq <= 0: erros.append("Frequência")
-            if not faixa: erros.append("Faixa")
-            if not ident: erros.append("Identificação")
-            if not interferente: erros.append("Interferente?")
-            if not obs: erros.append("Observações")
             if not situacao: erros.append("Status")
             
             if erros: 
-                st.error("Preencha: " + ", ".join(erros))
+                st.error("Preencha os campos obrigatórios.")
+                st.session_state.insert_success = None
             else:
                 dados_submit = {
                     'Dia': dia, 'Hora': hora, 'Fiscal': fiscal, 'Local/Região': local,
@@ -1258,42 +1341,48 @@ def tela_inserir(client, spread_id):
                     'Observações/Detalhes/Contatos': obs, 'Situação': situacao,
                     'Autorizado? (Q)': 'Indefinido', 'Interferente?': interferente
                 }
-                st.session_state.dados_para_salvar = dados_submit
-                
-                f_check = round(float(freq), 3)
-                if f_check in freqs_map:
-                    st.session_state.confirm_freq_asked = True
-                    st.session_state.regiao_existente = freqs_map[f_check]
+                if inserir_emissao_I_W(client, spread_id, dados_submit):
+                    st.session_state.insert_success = "Emissão inserida com sucesso. Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão."
+                    st.session_state.aba_conflito = None
                     st.rerun()
-                else:
-                    if inserir_emissao_I_W(client, spread_id, dados_submit):
-                        st.session_state.insert_success = "Emissão inserida com sucesso! Caso queira continuar inserindo emissões desta entidade, basta alterar os dados específicos e clicar em Registrar Emissão."
-                        if 'dados_para_salvar' in st.session_state:
-                            del st.session_state['dados_para_salvar']
-                        st.rerun()
 
     if botao_voltar(): 
+        st.session_state.insert_success = None
         st.session_state.view = 'main_menu'
         st.rerun()
 
 def tela_bsr_erb(client, spread_id):
     render_header()
     
+    # Marcador para estilização CSS (se houver)
     st.markdown('<div id="marker-bsr-erb-form"></div>', unsafe_allow_html=True)
-    with st.form("form_bsr"):
-        tipo = st.radio(f"Tipo {OBRIG}", ('BSR/Jammer', 'ERB Fake'))
-        regiao = st.text_input(f"Local {OBRIG}")
-        lat = st.text_input("Latitude (-N.NNNN)")
-        lon = st.text_input("Longitude (-N.NNNN)")
+    
+    # Usamos container(border=True) para manter o padrão visual da tela de inserir
+    with st.container(border=True):
+        st.markdown("### Registrar Jammer ou ERB Fake")
         
-        if st.form_submit_button("Registrar", use_container_width=True):
-            if not regiao: st.error("Local obrigatório")
-            elif not _valid_neg_coord(lat) or not _valid_neg_coord(lon): st.error("Coords inválidas")
-            else:
-                res = inserir_bsr_erb(client, spread_id, tipo, regiao, lat, lon)
-                st.success(res)
+        with st.form("form_bsr"):
+            tipo = st.radio(f"Tipo {OBRIG}", ('BSR/Jammer', 'ERB Fake'))
+            regiao = st.text_input(f"Local {OBRIG}")
+            
+            c1, c2 = st.columns(2)
+            lat = c1.text_input("Latitude (-N.NNNN)")
+            lon = c2.text_input("Longitude (-N.NNNN)")
+            
+            submitted = st.form_submit_button("Registrar", use_container_width=True)
+            
+            if submitted:
+                if not regiao:
+                    st.error("O campo 'Local' é obrigatório.")
+                elif not _valid_neg_coord(lat) or not _valid_neg_coord(lon):
+                    st.error("Coordenadas inválidas. Use o formato -N.NNNNNN.")
+                else:
+                    res = inserir_bsr_erb(client, spread_id, tipo, regiao, lat, lon)
+                    st.success(res)
 
-    if botao_voltar(): st.session_state.view = 'main_menu'; st.rerun()
+    if botao_voltar(key="voltar_bsr"):
+        st.session_state.view = 'main_menu'
+        st.rerun()
 
 def tela_busca(client, spread_id):
     render_header()
