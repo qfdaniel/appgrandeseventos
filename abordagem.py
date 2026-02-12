@@ -1313,7 +1313,7 @@ def tela_inserir(client, spread_id):
                 f"""
                 <div style="background-color: #d32f2f; color: white; padding: 12px; border-radius: 8px; 
                             text-align: center; font-weight: bold; margin: 15px 0; border: 2px solid #b71c1c;">
-                    ⚠️ Essa frequência consta na base de dados - Aba: {st.session_state.aba_conflito} (este é apenas um aviso)
+                    ⚠️ Essa frequência consta na Planilha - Aba: {st.session_state.aba_conflito} (este é apenas um aviso)
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1524,4 +1524,5 @@ try:
 
 except Exception as e:
     st.error("Erro fatal na aplicação.")
+
     st.exception(e)
