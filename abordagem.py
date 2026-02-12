@@ -520,20 +520,26 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
         f_val = round(float(freq_digitada), 3)
         planilha = abrir_planilha_selecionada(client, spreadsheet_id)
         
-        # 1. Verifica na Abordagem (Coluna M)
+        # 1. Verifica na Abordagem (Coluna M - índice 13)
         aba_abord = planilha.worksheet("Abordagem")
         col_m = aba_abord.col_values(13)
         for val in col_m[1:]:
             try:
-                if round(float(str(val).replace(",", ".")), 3) == f_val: return "Abordagem"
+                if round(float(str(val).replace(",", ".")), 3) == f_val: 
+                    return "Abordagem"
             except: continue
 
-        # 2. Verifica na Tabela UTE (Coluna E)
+        # 2. Verifica na Tabela UTE (Frequência na Coluna E - índice 5)
         aba_ute = planilha.worksheet("Tabela UTE")
-        col_e = aba_ute.col_values(5)
-        for val in col_e[1:]:
+        # Pegamos colunas A (Entidade) e E (Frequência) para evitar múltiplas chamadas
+        entidades = aba_ute.col_values(1)
+        freqs_ute = aba_ute.col_values(5)
+        
+        for i in range(1, len(freqs_ute)):
             try:
-                if round(float(str(val).replace(",", ".")), 3) == f_val: return "Tabela UTE"
+                if round(float(str(freqs_ute[i]).replace(",", ".")), 3) == f_val: 
+                    entidade = entidades[i] if i < len(entidades) else "Não identificada"
+                    return f"UTE [Entidade: {entidade}]" # Retorno formatado conforme solicitado
             except: continue
 
         # 3. Verifica em todas as abas de Estações (Coluna F)
@@ -543,7 +549,8 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
             col_f = aba_est.col_values(6)
             for val in col_f[1:]:
                 try:
-                    if round(float(str(val).replace(",", ".")), 3) == f_val: return f"Estação {nome_est}"
+                    if round(float(str(val).replace(",", ".")), 3) == f_val: 
+                        return f"Estação {nome_est}"
                 except: continue
     except: pass
     return None
