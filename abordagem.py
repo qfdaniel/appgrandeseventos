@@ -157,7 +157,7 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         else:
             # AJUSTE 1: Reduzi a margem inferior do texto de 5px para 0px
             st.markdown(
-                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -4px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
+                f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: 0px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
                 unsafe_allow_html=True
             )
 
@@ -1565,4 +1565,5 @@ except Exception as e:
 
 
     st.exception(e)
+
 
