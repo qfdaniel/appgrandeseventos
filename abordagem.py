@@ -1368,7 +1368,7 @@ def tela_bsr_erb(client, spread_id):
     
     # Usamos container(border=True) para manter o padrão visual da tela de inserir
     with st.container(border=True):
-        st.markdown("#### Registrar Jammer ou ERB Fake")
+        st.markdown("##### Registrar Jammer ou ERB Fake")
         
         with st.form("form_bsr"):
             tipo = st.radio(f"Tipo {OBRIG}", ('BSR/Jammer', 'ERB Fake'))
@@ -1565,3 +1565,4 @@ except Exception as e:
 
 
     st.exception(e)
+
