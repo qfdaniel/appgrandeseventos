@@ -18,14 +18,14 @@ ABAS_SISTEMA = ["PAINEL", "Abordagem", "Tabela UTE", "Escala", "LISTAS"]
 
 # --- CONFIG DA PÁGINA ---
 st.set_page_config(
-    page_title="AppGrandesEventos",
+    page_title="AppEventos",
     page_icon="anatel.png",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
 
 # --- CONSTANTES ---
-TITULO_PRINCIPAL = "AppGrandesEventos"
+TITULO_PRINCIPAL = "AppEventos"
 OBRIG = ":red[**\\***]"
 
 # --- HELPER: NORMALIZAR TEXTO ---
@@ -1562,5 +1562,6 @@ try:
 
 except Exception as e:
     st.error("Erro fatal na aplicação.")
+
 
     st.exception(e)
