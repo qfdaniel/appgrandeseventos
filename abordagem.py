@@ -61,10 +61,7 @@ def get_city_map_url(_client, spreadsheet_id):
     # Fallback caso não encontre coordenadas
     return "https://www.google.com/maps"
 
-IDENT_OPCOES = [
-    "Sinal de dados", "Comunicação (voz) relacionada ao evento", "Comunicação (voz) não relacionada ao evento",
-    "Sinal não relacionado ao evento", "Espúrio ou Produto de Intermodulação", "Ruído", "Não identificado",
-]
+IDENT_OPCOES = ["Sinal de dados", "Comunicação relacionada ao evento", "Comunicação não relacionada ao evento", "Espúrio ou Produto de Intermodulação", "Ruído", "Não identificado",]
 
 FAIXA_OPCOES = ["FM", "SMA", "SMM", "SLP", "TV", "SMP", "GNSS", "Satélite", "Radiação Restrita"]
 
@@ -179,6 +176,23 @@ st.markdown(f"""
 <style>
   :root {{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
   
+  /* --- REMOVE O EFEITO DE TELA APAGADA (FADING) DURANTE O CARREGAMENTO --- */
+  div[data-testid="stAppViewBlockContainer"] {{
+      opacity: 1 !important;
+      transition: none !important;
+  }}
+  
+  div[data-stale="true"], 
+  div[data-testid="stFormSubmitButton"] > button:active {{
+      opacity: 1 !important;
+      transition: none !important;
+      filter: none !important;
+  }}
+  
+  div[data-testid="stStatusWidget"] {{
+      visibility: hidden;
+  }}
+  
   /* 1. CONFIGURAÇÃO GERAL (FUNDO) */
   .stApp {{ 
       background-color: #F1F8E9; 
@@ -196,6 +210,8 @@ st.markdown(f"""
       -webkit-text-fill-color: #000000 !important;
   }}
 
+  
+  
   /* 3. FORÇA FONTE BRANCA EM TODOS OS BOTÕES (INCLUINDO REGISTRAR/SUBMIT) */
   /* Aplicamos a todos os botões, links e botões de formulário simultaneamente */
   .stButton > button, 
@@ -443,6 +459,36 @@ def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
     except Exception:
         pass
     return None
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def obter_fuso_horario_evento(_client, spreadsheet_id):
+    """Busca lat/long e converte para o fuso horário local. Falha para Brasília."""
+    fuso_padrao = "America/Sao_Paulo"
+    try:
+        from timezonefinder import TimezoneFinder
+        
+        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
+        abas_estacoes = [ws for ws in planilha.worksheets() if ws.title not in ABAS_SISTEMA]
+        
+        if abas_estacoes:
+            aba = abas_estacoes[0]
+            # Busca Lat em AE3 e Long em AE4
+            lat_str = aba.cell(3, 31).value
+            lon_str = aba.cell(4, 31).value
+            
+            if lat_str and lon_str:
+                lat = float(str(lat_str).replace(',', '.').strip())
+                lon = float(str(lon_str).replace(',', '.').strip())
+                
+                tf = TimezoneFinder()
+                fuso_encontrado = tf.timezone_at(lng=lon, lat=lat)
+                if fuso_encontrado:
+                    return fuso_encontrado
+    except Exception as e:
+        # Se houver qualquer erro (falta de coord, texto no lugar de número), ignora e usa o padrão
+        pass
+        
+    return fuso_padrao
 
 def _first_col_match(columns, *preds):
     for c in columns:
@@ -961,7 +1007,7 @@ def carregar_opcoes_identificacao(_client, spreadsheet_id):
         
         if aba_alvo:
             # Assume que a validação de dados está na coluna AC (padrão)
-            return [i[0] for i in aba_alvo.get('AC3:AC9') if i]
+            return [i[0] for i in aba_alvo.get('AC2:AC7') if i]
         return ["Opções não encontradas"]
     except:
         return ["Opção genérica (erro leitura)"]
@@ -1270,7 +1316,8 @@ def tela_inserir(client, spread_id):
     def check_freq_callback():
         # Buscamos o valor diretamente do estado da widget
         f_digitada = st.session_state.freq_input_key
-        if f_digitada > 0:
+        # Verifica se f_digitada não é None antes de comparar
+        if f_digitada is not None and f_digitada > 0:
             # Força a execução da busca global
             st.session_state.aba_conflito = verificar_frequencia_global(client, spread_id, f_digitada)
         else:
@@ -1288,8 +1335,13 @@ def tela_inserir(client, spread_id):
     # --- CONTAINER NATIVO COM BORDA ---
     with st.container(border=True):
         col1, col2 = st.columns(2)
-        val_dia = dados_prev.get('Dia', datetime.now(ZoneInfo("America/Sao_Paulo")).date())
-        val_hora = dados_prev.get('Hora', datetime.now(ZoneInfo("America/Sao_Paulo")).time())
+        
+        # --- BUSCA O FUSO HORÁRIO DINÂMICO ---
+        fuso_evento = obter_fuso_horario_evento(client, spread_id)
+        
+        # Puxa a data/hora já no fuso correto do evento
+        val_dia = dados_prev.get('Dia', datetime.now(ZoneInfo(fuso_evento)).date())
+        val_hora = dados_prev.get('Hora', datetime.now(ZoneInfo(fuso_evento)).time())
         
         dia = col1.date_input(f"Data {OBRIG}", value=val_dia, format="DD/MM/YYYY")
         hora = col2.time_input(f"Hora {OBRIG}", value=val_hora)
@@ -1299,15 +1351,27 @@ def tela_inserir(client, spread_id):
         
         c3, c4 = st.columns(2)
         
-        # O SEGRED: Usar a key no session_state para garantir que o callback leia o valor atual
+        # Pega valores prévios se existirem, senão usa None para deixar vazio
+        val_freq = dados_prev.get('Frequência em MHz')
+        val_freq = float(val_freq) if val_freq else None
+        
+        val_larg = dados_prev.get('Largura em kHz')
+        val_larg = float(val_larg) if val_larg else None
+        
+        # AQUI SÓ PODE EXISTIR UM "key='freq_input_key'" EM TODO O CÓDIGO
         freq = c3.number_input(
             f"Frequência (MHz) {OBRIG}", 
-            value=float(dados_prev.get('Frequência em MHz', 0.0)), 
+            value=val_freq, 
             format="%.3f",
             key="freq_input_key",
             on_change=check_freq_callback
         )
-        larg = c4.number_input(f"Largura (kHz) {OBRIG}", value=float(dados_prev.get('Largura em kHz', 0.0)), format="%.1f")
+        
+        larg = c4.number_input(
+            f"Largura (kHz) {OBRIG}", 
+            value=val_larg, 
+            format="%.1f"
+        )
         
         # Popup Vermelho Médio
         if st.session_state.aba_conflito:
@@ -1315,7 +1379,7 @@ def tela_inserir(client, spread_id):
                 f"""
                 <div style="background-color: #d32f2f; color: white; padding: 12px; border-radius: 8px; 
                             text-align: center; font-weight: bold; margin: 15px 0; border: 2px solid #b71c1c;">
-                    ⚠️ Essa frequência consta na Planilha - Aba: {st.session_state.aba_conflito} (este é apenas um aviso)
+                    ⚠️ AVISO (apenas): Essa frequência consta na Planilha - Aba: {st.session_state.aba_conflito}
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -1336,7 +1400,7 @@ def tela_inserir(client, spread_id):
         if st.button("Registrar Emissão", use_container_width=True):
             erros = []
             if not fiscal: erros.append("Fiscal")
-            if freq <= 0: erros.append("Frequência")
+            if not freq or freq <= 0: erros.append("Frequência")
             if not situacao: erros.append("Status")
             
             if erros: 
@@ -1345,7 +1409,9 @@ def tela_inserir(client, spread_id):
             else:
                 dados_submit = {
                     'Dia': dia, 'Hora': hora, 'Fiscal': fiscal, 'Local/Região': local,
-                    'Frequência em MHz': freq, 'Largura em kHz': larg, 'Faixa de Frequência': faixa,
+                    'Frequência em MHz': freq, 
+                    'Largura em kHz': larg if larg is not None else 0.0, # Evita erro se larg for vazio
+                    'Faixa de Frequência': faixa,
                     'Identificação': ident, 'UTE?': ute, 'Processo SEI ou Ato UTE': proc,
                     'Observações/Detalhes/Contatos': obs, 'Situação': situacao,
                     'Autorizado? (Q)': 'Indefinido', 'Interferente?': interferente
@@ -1562,6 +1628,5 @@ try:
 
 except Exception as e:
     st.error("Erro fatal na aplicação.")
-
 
     st.exception(e)
