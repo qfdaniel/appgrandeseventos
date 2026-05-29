@@ -1343,7 +1343,7 @@ def tela_inserir(client, spread_id):
         val_dia = dados_prev.get('Dia', datetime.now(ZoneInfo(fuso_evento)).date())
         val_hora = dados_prev.get('Hora', datetime.now(ZoneInfo(fuso_evento)).time())
         
-        dia = col1.date_input(f"Data {OBRIG}", value=val_dia, format="DD/MM/YYYY")
+        dia = col1.date_input(f"Data {OBRIG}", value=val_dia, format="DD/MM/YY")
         hora = col2.time_input(f"Hora {OBRIG}", value=val_hora)
         
         fiscal = st.text_input(f"Fiscal {OBRIG}", value=dados_prev.get('Fiscal', ''))
