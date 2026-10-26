@@ -1192,7 +1192,6 @@ def tela_menu_principal(client, spread_id):
     render_header(show_logout=True)
 
     # --- LOADING ÚNICO E LIMPO ---
-    # Tudo que estiver dentro do 'with st.spinner' será carregado enquanto mostra apenas uma msg
     with st.spinner("Carregando base de dados..."):
         df_painel = carregar_pendencias_painel_mapeadas(client, spread_id)
         df_abord  = carregar_pendencias_abordagem_pendentes(client, spread_id)
@@ -1212,7 +1211,7 @@ def tela_menu_principal(client, spread_id):
     # --- LAYOUT DOS BOTÕES ---
     _, button_col, _ = st.columns([1, 2, 1])
     
-   with button_col:
+    with button_col:
         st.markdown('<div id="marker-vermelho"></div>', unsafe_allow_html=True)
         
         if st.button("🏷️ **REGISTRAR** Equipamento (T&T)", use_container_width=True, key="btn_tt"):
@@ -1233,7 +1232,6 @@ def tela_menu_principal(client, spread_id):
         if st.button("🗒️ **CONSULTAR** Atos de UTE", use_container_width=True, key="btn_ute"):
             st.session_state.view = 'tabela_ute'; st.rerun()
         
-        # ... dentro da função tela_menu_principal, na seção de Botões de Links:
         st.link_button("🗺️ **Mapa da Região/Evento**", link_mapa, use_container_width=True)
         st.link_button("🌍 **Tradutor de Texto/Voz**", "https://translate.google.com/?sl=auto&tl=pt&op=translate", use_container_width=True)
 
