@@ -65,6 +65,48 @@ IDENT_OPCOES = ["Sinal de dados", "Comunicação relacionada ao evento", "Comuni
 
 FAIXA_OPCOES = ["FM", "SMA", "SMM", "SLP", "TV", "SMP", "GNSS", "Satélite", "Radiação Restrita"]
 
+EQUIP_TT_OPCOES = [
+    "Microfone sem fio",
+    "Fone sem fio (retorno)",
+    "Rádio portátil",
+    "Transceptor de câmera",
+    "Estação Repetidora",
+    "Equip. com modem SMP",
+    "Outros"
+]
+
+ETIQUETA_TT_OPCOES = ["Autorizado", "Não permitido"]
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def obter_lista_paises() -> List[str]:
+    """Busca lista pública de países em português (API IBGE) com Brasil no topo."""
+    try:
+        import urllib.request
+        import json
+        url = "https://servicodados.ibge.gov.br/api/v1/localidades/paises?orderBy=nome"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            dados = json.loads(resp.read().decode('utf-8'))
+            paises = sorted(list({item['nome'] for item in dados if 'nome' in item}))
+            if "Brasil" in paises:
+                paises.remove("Brasil")
+            return ["Brasil"] + paises
+    except Exception:
+        # Fallback caso a rede em campo bloqueie acesso externo à API do IBGE
+        return [
+            "Brasil", "África do Sul", "Alemanha", "Angola", "Arábia Saudita", "Argentina",
+            "Austrália", "Áustria", "Bélgica", "Bolívia", "Cabo Verde", "Canadá", "Chile",
+            "China", "Colômbia", "Coreia do Sul", "Costa Rica", "Cuba", "Dinamarca", "Egito",
+            "Emirados Árabes Unidos", "Equador", "Espanha", "Estados Unidos", "Finlândia",
+            "França", "Grécia", "Guiana", "Holanda (Países Baixos)", "Hungria", "Índia",
+            "Indonésia", "Inglaterra / Reino Unido", "Irã", "Irlanda", "Israel", "Itália",
+            "Jamaica", "Japão", "Marrocos", "México", "Moçambique", "Nigéria", "Noruega",
+            "Nova Zelândia", "Panamá", "Paraguai", "Peru", "Polônia", "Portugal", "Quênia",
+            "República Dominicana", "República Tcheca", "Romênia", "Rússia", "Senegal",
+            "Singapura", "Suécia", "Suíça", "Suriname", "Tailândia", "Turquia", "Ucrânia",
+            "Uruguai", "Venezuela", "Vietnã", "Outro"
+        ]
+
 # --- CONEXÃO GSPREAD ---
 @st.cache_resource(ttl=3600, show_spinner=False)
 def obter_cliente_gspread():
@@ -952,7 +994,7 @@ def inserir_emissao_I_W(_client, spreadsheet_id, dados_formulario: Dict[str, str
         next_id = _next_sequential_id(aba, col_letter="H", start_row=2)
 
         dia = dados_formulario.get("Dia")
-        if hasattr(dia, "strftime"): dia = dia.strftime("%d/%m/%Y")
+        if hasattr(dia, "strftime"): dia = dia.strftime("%d/%m/%y")
         
         hora = dados_formulario.get("Hora")
         if hasattr(hora, "strftime"): hora = hora.strftime("%H:%M")
@@ -999,34 +1041,44 @@ def inserir_bsr_erb(_client, spreadsheet_id, tipo, regiao, lat, lon) -> str:
     except Exception as e:
         return f"ERRO: {e}"
 
-def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) -> bool:
+def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) -> str:
+    """Retorna 'OK' se inserido, 'DUPLICADO' se já existir registro idêntico, ou mensagem de erro."""
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         aba = planilha.worksheet("Abordagem")
-        row = _first_empty_row_in_block(aba, "AD", "AL")
 
         dia = dados_tt.get("Data")
         if hasattr(dia, "strftime"):
-            dia = dia.strftime("%d/%m/%Y")
+            dia = dia.strftime("%d/%m/%y")
 
-        vals = [
-            dados_tt.get("Entidade", ""),
-            dados_tt.get("País", ""),
-            dia,
-            dados_tt.get("Contato", ""),
-            dados_tt.get("Equipamento", ""),
-            dados_tt.get("Qtde", ""),
-            dados_tt.get("Freq", ""),
-            "Sim" if dados_tt.get("UTE?") else "Não",
-            dados_tt.get("Etiqueta", "")
+        novo_reg = [
+            str(dados_tt.get("Entidade", "")).strip(),
+            str(dados_tt.get("País", "")).strip(),
+            str(dia).strip(),
+            str(dados_tt.get("Contato", "")).strip(),
+            str(dados_tt.get("Equipamento", "")).strip(),
+            str(dados_tt.get("Qtde", "")).strip(),
+            str(dados_tt.get("Freq", "")).strip(),
+            str(dados_tt.get("UTE?", "")).strip(),
+            str(dados_tt.get("Etiqueta", "")).strip()
         ]
 
-        aba.update(f"AD{row}:AL{row}", [vals], value_input_option="USER_ENTERED")
-        return True
-    except Exception as e:
-        st.error(f"Erro ao inserir T&T: {e}")
-        return False
+        # Verifica se já existe registro idêntico em AD:AL
+        existentes = aba.get("AD2:AL")
+        if existentes:
+            novo_norm = [_normalize_text(x) for x in novo_reg]
+            for r in existentes:
+                r_padded = [(r[i] if i < len(r) else "") for i in range(9)]
+                r_norm = [_normalize_text(x) for x in r_padded]
+                if r_norm == novo_norm:
+                    return "DUPLICADO"
 
+        row = _first_empty_row_in_block(aba, "AD", "AL")
+        aba.update(f"AD{row}:AL{row}", [novo_reg], value_input_option="USER_ENTERED")
+        return "OK"
+    except Exception as e:
+        return f"ERRO: {e}"
+        
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_opcoes_identificacao(_client, spreadsheet_id):
     """Tenta carregar opções de qualquer aba de estação disponível"""
@@ -1507,70 +1559,125 @@ def tela_tt(client, spread_id):
 
     if "tt_success" not in st.session_state:
         st.session_state.tt_success = None
+    if "tt_duplicado" not in st.session_state:
+        st.session_state.tt_duplicado = False
 
     fuso_evento = obter_fuso_horario_evento(client, spread_id)
+    lista_paises = obter_lista_paises()
 
     with st.container(border=True):
         st.markdown("##### 🏷️ Registrar Equipamento Etiquetado (T&T)")
 
         c1, c2 = st.columns(2)
         entidade = c1.text_input(f"Entidade {OBRIG}")
-        pais = c2.text_input(f"País {OBRIG}")
+        pais = c2.selectbox(
+            f"País {OBRIG}",
+            options=lista_paises,
+            index=0,  # Brasil já vem no topo como padrão
+            placeholder="Selecione o país..."
+        )
 
         c3, c4 = st.columns(2)
         dia_tt = c3.date_input(
-            f"Data {OBRIG}",
+            f"Data (DD/MM/AA) {OBRIG}",
             value=datetime.now(ZoneInfo(fuso_evento)).date(),
             format="DD/MM/YYYY"
         )
-        contato = c4.text_input("Contato")
+        contato = c4.text_input(f"Contato (Nome - Telefone) {OBRIG}")
 
         c5, c6 = st.columns([2, 1])
-        equipamento = c5.text_input(f"Equipamento {OBRIG}")
+        equipamento = c5.selectbox(
+            f"Equipamento {OBRIG}",
+            options=EQUIP_TT_OPCOES,
+            index=None,
+            placeholder="Selecione..."
+        )
         qtde = c6.number_input(f"Qtde {OBRIG}", min_value=1, step=1, value=None)
 
         c7, c8 = st.columns(2)
-        freq_tt = c7.number_input(f"Frequência (MHz) {OBRIG}", value=None, format="%.3f")
-        etiqueta = c8.text_input(f"Etiqueta {OBRIG}")
+        freq_tt = c7.text_input(
+            f"Frequência (MHz) - NNN,NNN {OBRIG}",
+            placeholder="Ex: 450,125"
+        )
+        etiqueta = c8.selectbox(
+            f"Etiqueta {OBRIG}",
+            options=ETIQUETA_TT_OPCOES,
+            index=None,
+            placeholder="Selecione..."
+        )
 
-        ute_tt = st.checkbox("Possui UTE?")
+        ute_tt = st.selectbox(
+            f"Possui UTE? {OBRIG}",
+            options=["Sim", "Não"],
+            index=None,
+            placeholder="Selecione..."
+        )
 
+        # Alerta fundo vermelho e letra branca para registro idêntico
+        if st.session_state.tt_duplicado:
+            st.markdown(
+                """
+                <div style="background-color: #d32f2f; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+                            padding: 12px; border-radius: 8px; text-align: center; font-weight: bold;
+                            margin: 15px 0; border: 2px solid #b71c1c;">
+                    ⚠️ ATENÇÃO: Já existe um registro idêntico cadastrado na planilha!
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+        # Mensagem de sucesso persistente
         if st.session_state.tt_success:
             st.success(st.session_state.tt_success)
 
         if st.button("Registrar Equipamento", use_container_width=True, key="btn_salvar_tt"):
+            st.session_state.tt_duplicado = False
+            st.session_state.tt_success = None
+
             erros = []
-            if not entidade.strip(): erros.append("Entidade")
-            if not pais.strip(): erros.append("País")
-            if not equipamento.strip(): erros.append("Equipamento")
+            if not entidade or not entidade.strip(): erros.append("Entidade")
+            if not pais: erros.append("País")
+            if not dia_tt: erros.append("Data")
+            if not contato or not contato.strip(): erros.append("Contato (Nome - Telefone)")
+            if not equipamento: erros.append("Equipamento")
             if qtde is None or qtde <= 0: erros.append("Qtde")
-            if freq_tt is None or freq_tt <= 0: erros.append("Frequência")
-            if not etiqueta.strip(): erros.append("Etiqueta")
+            if not freq_tt or not freq_tt.strip(): erros.append("Frequência (MHz)")
+            if not ute_tt: erros.append("Possui UTE?")
+            if not etiqueta: erros.append("Etiqueta")
+
+            freq_str = (freq_tt or "").strip()
 
             if erros:
-                st.error("Preencha os campos obrigatórios: " + ", ".join(erros))
-                st.session_state.tt_success = None
+                st.error("Preencha todos os campos obrigatórios: " + ", ".join(erros))
+            elif "." in freq_str or not re.match(r"^\d+,\d+$", freq_str):
+                st.error("A Frequência deve conter apenas números e vírgula (sem ponto), no formato NNN,NNN (ex: 450,125).")
             else:
                 dados_tt = {
                     "Entidade": entidade.strip(),
-                    "País": pais.strip(),
+                    "País": pais,
                     "Data": dia_tt,
                     "Contato": contato.strip(),
-                    "Equipamento": equipamento.strip(),
+                    "Equipamento": equipamento,
                     "Qtde": int(qtde),
-                    "Freq": round(float(freq_tt), 3),
+                    "Freq": freq_str,
                     "UTE?": ute_tt,
-                    "Etiqueta": etiqueta.strip()
+                    "Etiqueta": etiqueta
                 }
-                if inserir_equipamento_tt(client, spread_id, dados_tt):
-                    st.session_state.tt_success = "Equipamento registrado com sucesso!"
+                status = inserir_equipamento_tt(client, spread_id, dados_tt)
+                if status == "OK":
+                    st.session_state.tt_success = "Equipamento registrado com sucesso! Caso queira registrar outro equipamento dessa entidade, altere os campos necessários e Registre."
                     st.rerun()
+                elif status == "DUPLICADO":
+                    st.session_state.tt_duplicado = True
+                    st.rerun()
+                else:
+                    st.error(status)
 
     if botao_voltar(key="voltar_tt"):
         st.session_state.tt_success = None
+        st.session_state.tt_duplicado = False
         st.session_state.view = 'main_menu'
         st.rerun()
-
 def tela_busca(client, spread_id):
     render_header()
     
