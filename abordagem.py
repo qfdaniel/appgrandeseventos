@@ -431,27 +431,21 @@ st.markdown(f"""
 
   #marker-vermelho {{ display: none; }}
   
-  #marker-vermelho {{ display: none; }}
-  
-  div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(-n+5) .stButton > button {{
-    background: linear-gradient(to bottom, #c62828, #e53935) !important; border-color: #a92222 !important;
+  /* 1º Botão após o marker (Equipamento T&T) -> FUNDO PRETO */
+  div[data-testid="stElementContainer"]:has(#marker-vermelho) + div[data-testid="stElementContainer"] .stButton > button,
+  div.st-key-btn_tt .stButton > button,
+  div.st-key-btn_tt > button {{
+    background: linear-gradient(to bottom, #111111, #2b2b2b) !important;
+    border-color: #000000 !important;
+    color: #FFFFFF !important;
   }}
 
-  /* Botão T&T (1º botão) em Amarelo Escuro / Âmbar com ótimo contraste para fonte branca */
-  div.st-key-btn_tt button {{
-    background: linear-gradient(to bottom, #b27d00, #d49a00) !important;
-    border-color: #8c6200 !important;
-  }}
-  
-  div[data-testid="stLinkButton"] a[href*="translate.google.com"],
-  div[data-testid="stLinkButton"] a[href*="maps.google"] {{
-    background: linear-gradient(to bottom, #2e7d32, #4caf50) !important; border-color: #1b5e20 !important;
-  }}
-  
-  #marker-bsr-erb-form {{ display: none; }}
-  div[data-testid="stElementContainer"]:has(#marker-bsr-erb-form) ~ div[data-testid="stElementContainer"] div[data-testid="stForm"] .stButton > button {{
-    background: linear-gradient(to bottom, #2e7d32, #4caf50) !important;
-    border-color: #1b5e20 !important;
+  /* 2º, 3º e 4º Botões após o marker (Inserir, Tratar, Jammer) -> FUNDO VERMELHO */
+  div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(3) .stButton > button,
+  div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(4) .stButton > button,
+  div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(5) .stButton > button {{
+    background: linear-gradient(to bottom, #c62828, #e53935) !important;
+    border-color: #a92222 !important;
   }}
   
   .confirm-warning{{ background: linear-gradient(to bottom, #f0ad4e, #ec971f); color:#333 !important; font-weight:600; text-align:center; padding:1rem; border-radius:8px; margin-bottom:1rem; border: 1px solid #d58512; }}
@@ -1573,7 +1567,7 @@ def tela_tt(client, spread_id):
         pais = c2.selectbox(
             f"País {OBRIG}",
             options=lista_paises,
-            index=0,  # Brasil já vem no topo como padrão
+            index=None,  # Começa vazio; Brasil é o 1º ao abrir a lista
             placeholder="Selecione o país..."
         )
 
@@ -1592,7 +1586,7 @@ def tela_tt(client, spread_id):
             index=None,
             placeholder="Selecione..."
         )
-        qtde = c6.number_input(f"Qtde {OBRIG}", min_value=1, step=1, value=None)
+        qtde = c6.number_input(f"Quantidade {OBRIG}", min_value=1, step=1, value=None)
 
         c7, c8 = st.columns(2)
         freq_tt = c7.text_input(
@@ -1606,9 +1600,11 @@ def tela_tt(client, spread_id):
             placeholder="Selecione..."
         )
 
-        ute_tt = st.selectbox(
+        # Coluna reduzida para o dropdown de UTE não ficar largo na tela toda
+        c9, _ = st.columns(2)
+        ute_tt = c9.selectbox(
             f"Possui UTE? {OBRIG}",
-            options=["Sim", "Não"],
+            options=["Sim", "Não", "Em processo", "Licenciado (SLP e outros)"],
             index=None,
             placeholder="Selecione..."
         )
@@ -1640,7 +1636,7 @@ def tela_tt(client, spread_id):
             if not dia_tt: erros.append("Data")
             if not contato or not contato.strip(): erros.append("Contato (Nome - Telefone)")
             if not equipamento: erros.append("Equipamento")
-            if qtde is None or qtde <= 0: erros.append("Qtde")
+            if qtde is None or qtde <= 0: erros.append("Quantidade")
             if not freq_tt or not freq_tt.strip(): erros.append("Frequência (MHz)")
             if not ute_tt: erros.append("Possui UTE?")
             if not etiqueta: erros.append("Etiqueta")
