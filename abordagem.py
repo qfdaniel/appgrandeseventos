@@ -447,6 +447,20 @@ st.markdown(f"""
     background: linear-gradient(to bottom, #c62828, #e53935) !important;
     border-color: #a92222 !important;
   }}
+
+  /* Botões de Link (Mapa e Tradutor) -> FUNDO VERDE */
+  div[data-testid="stLinkButton"] a[href*="translate.google.com"],
+  div[data-testid="stLinkButton"] a[href*="maps.google"],
+  div[data-testid="stLinkButton"] a[href*="google.com/maps"] {{
+    background: linear-gradient(to bottom, #2e7d32, #4caf50) !important;
+    border-color: #1b5e20 !important;
+  }}
+
+  #marker-bsr-erb-form {{ display: none; }}
+  div[data-testid="stElementContainer"]:has(#marker-bsr-erb-form) ~ div[data-testid="stElementContainer"] div[data-testid="stForm"] .stButton > button {{
+    background: linear-gradient(to bottom, #2e7d32, #4caf50) !important;
+    border-color: #1b5e20 !important;
+  }}
   
   .confirm-warning{{ background: linear-gradient(to bottom, #f0ad4e, #ec971f); color:#333 !important; font-weight:600; text-align:center; padding:1rem; border-radius:8px; margin-bottom:1rem; border: 1px solid #d58512; }}
   .info-green {{ background: linear-gradient(to bottom, #1b5e20, #2e7d32); color: #fff; font-weight: 700; text-align: center; padding: .8rem 1rem; border-radius: 8px; margin: .25rem 0 1rem; }}
