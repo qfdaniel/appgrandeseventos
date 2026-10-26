@@ -389,8 +389,16 @@ st.markdown(f"""
 
   #marker-vermelho {{ display: none; }}
   
-  div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(-n+4) .stButton > button {{
+  #marker-vermelho {{ display: none; }}
+  
+  div[data-testid="stElementContainer"]:has(#marker-vermelho) ~ div[data-testid="stElementContainer"]:nth-of-type(-n+5) .stButton > button {{
     background: linear-gradient(to bottom, #c62828, #e53935) !important; border-color: #a92222 !important;
+  }}
+
+  /* Botão T&T (1º botão) em Amarelo Escuro / Âmbar com ótimo contraste para fonte branca */
+  div.st-key-btn_tt button {{
+    background: linear-gradient(to bottom, #b27d00, #d49a00) !important;
+    border-color: #8c6200 !important;
   }}
   
   div[data-testid="stLinkButton"] a[href*="translate.google.com"],
@@ -991,6 +999,34 @@ def inserir_bsr_erb(_client, spreadsheet_id, tipo, regiao, lat, lon) -> str:
     except Exception as e:
         return f"ERRO: {e}"
 
+def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) -> bool:
+    try:
+        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
+        aba = planilha.worksheet("Abordagem")
+        row = _first_empty_row_in_block(aba, "AD", "AL")
+
+        dia = dados_tt.get("Data")
+        if hasattr(dia, "strftime"):
+            dia = dia.strftime("%d/%m/%Y")
+
+        vals = [
+            dados_tt.get("Entidade", ""),
+            dados_tt.get("País", ""),
+            dia,
+            dados_tt.get("Contato", ""),
+            dados_tt.get("Equipamento", ""),
+            dados_tt.get("Qtde", ""),
+            dados_tt.get("Freq", ""),
+            "Sim" if dados_tt.get("UTE?") else "Não",
+            dados_tt.get("Etiqueta", "")
+        ]
+
+        aba.update(f"AD{row}:AL{row}", [vals], value_input_option="USER_ENTERED")
+        return True
+    except Exception as e:
+        st.error(f"Erro ao inserir T&T: {e}")
+        return False
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def carregar_opcoes_identificacao(_client, spreadsheet_id):
     """Tenta carregar opções de qualquer aba de estação disponível"""
@@ -1176,9 +1212,12 @@ def tela_menu_principal(client, spread_id):
     # --- LAYOUT DOS BOTÕES ---
     _, button_col, _ = st.columns([1, 2, 1])
     
-    with button_col:
+   with button_col:
         st.markdown('<div id="marker-vermelho"></div>', unsafe_allow_html=True)
         
+        if st.button("🏷️ **REGISTRAR** Equipamento (T&T)", use_container_width=True, key="btn_tt"):
+            st.session_state.view = 'tt'; st.rerun()
+
         if st.button("**📋 INSERIR** emissão verificada em campo", use_container_width=True, key="btn_inserir"):
             st.session_state.view = 'inserir'; st.rerun()
             
@@ -1459,6 +1498,81 @@ def tela_bsr_erb(client, spread_id):
         st.session_state.view = 'main_menu'
         st.rerun()
 
+def tela_tt(client, spread_id):
+    render_header()
+
+    st.markdown("""
+    <style>
+    div[data-testid="stNumberInput"] button { display: none !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    if "tt_success" not in st.session_state:
+        st.session_state.tt_success = None
+
+    fuso_evento = obter_fuso_horario_evento(client, spread_id)
+
+    with st.container(border=True):
+        st.markdown("##### 🏷️ Registrar Equipamento Etiquetado (T&T)")
+
+        c1, c2 = st.columns(2)
+        entidade = c1.text_input(f"Entidade {OBRIG}")
+        pais = c2.text_input(f"País {OBRIG}")
+
+        c3, c4 = st.columns(2)
+        dia_tt = c3.date_input(
+            f"Data {OBRIG}",
+            value=datetime.now(ZoneInfo(fuso_evento)).date(),
+            format="DD/MM/YYYY"
+        )
+        contato = c4.text_input("Contato")
+
+        c5, c6 = st.columns([2, 1])
+        equipamento = c5.text_input(f"Equipamento {OBRIG}")
+        qtde = c6.number_input(f"Qtde {OBRIG}", min_value=1, step=1, value=None)
+
+        c7, c8 = st.columns(2)
+        freq_tt = c7.number_input(f"Frequência (MHz) {OBRIG}", value=None, format="%.3f")
+        etiqueta = c8.text_input(f"Etiqueta {OBRIG}")
+
+        ute_tt = st.checkbox("Possui UTE?")
+
+        if st.session_state.tt_success:
+            st.success(st.session_state.tt_success)
+
+        if st.button("Registrar Equipamento", use_container_width=True, key="btn_salvar_tt"):
+            erros = []
+            if not entidade.strip(): erros.append("Entidade")
+            if not pais.strip(): erros.append("País")
+            if not equipamento.strip(): erros.append("Equipamento")
+            if qtde is None or qtde <= 0: erros.append("Qtde")
+            if freq_tt is None or freq_tt <= 0: erros.append("Frequência")
+            if not etiqueta.strip(): erros.append("Etiqueta")
+
+            if erros:
+                st.error("Preencha os campos obrigatórios: " + ", ".join(erros))
+                st.session_state.tt_success = None
+            else:
+                dados_tt = {
+                    "Entidade": entidade.strip(),
+                    "País": pais.strip(),
+                    "Data": dia_tt,
+                    "Contato": contato.strip(),
+                    "Equipamento": equipamento.strip(),
+                    "Qtde": int(qtde),
+                    "Freq": round(float(freq_tt), 3),
+                    "UTE?": ute_tt,
+                    "Etiqueta": etiqueta.strip()
+                }
+                if inserir_equipamento_tt(client, spread_id, dados_tt):
+                    st.session_state.tt_success = "Equipamento registrado com sucesso!"
+                    st.rerun()
+
+    if botao_voltar(key="voltar_tt"):
+        st.session_state.tt_success = None
+        st.session_state.view = 'main_menu'
+        st.rerun()
+
 def tela_busca(client, spread_id):
     render_header()
     
@@ -1625,6 +1739,7 @@ try:
         elif st.session_state.view == 'bsr_erb': tela_bsr_erb(client_g, sp_id)
         elif st.session_state.view == 'busca': tela_busca(client_g, sp_id)
         elif st.session_state.view == 'tabela_ute': tela_tabela_ute(client_g, sp_id)
+        elif st.session_state.view == 'tt': tela_tt(client_g, sp_id)
 
 except Exception as e:
     st.error("Erro fatal na aplicação.")
