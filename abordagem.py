@@ -1050,7 +1050,7 @@ def inserir_bsr_erb(_client, spreadsheet_id, tipo, regiao, lat, lon) -> str:
         return f"ERRO: {e}"
 
 def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) -> str:
-    """Retorna 'OK' se inserido, 'DUPLICADO' se já existir registro idêntico, ou mensagem de erro."""
+    """Retorna 'OK' se inserido, 'DUPLICADO' se já existir registro idêntico (ignorando data e hora), ou erro."""
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         aba = planilha.worksheet("Abordagem")
@@ -1076,15 +1076,14 @@ def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) ->
             str(dados_tt.get("Etiqueta", "")).strip()
         ]
 
-        # Verifica se já existe registro idêntico em AD:AM (ignora a Hora na comparação ou compara tudo,exceto segundos)
+        # Verifica se já existe registro idêntico em AD:AM (ignorando Data [índice 2] e Hora [índice 3])
         existentes = aba.get("AD2:AM")
         if existentes:
-            # Comparamos todos os campos (índices 0,1,2 e 4,5,6,7,8,9) ou os 10 campos completos:
-            novo_norm = [_normalize_text(x) for x in novo_reg]
+            novo_norm_sem_datahora = [_normalize_text(novo_reg[i]) for i in range(10) if i not in [2, 3]]
             for r in existentes:
                 r_padded = [(r[i] if i < len(r) else "") for i in range(10)]
-                r_norm = [_normalize_text(x) for x in r_padded]
-                if r_norm == novo_norm:
+                r_norm_sem_datahora = [_normalize_text(r_padded[i]) for i in range(10) if i not in [2, 3]]
+                if r_norm_sem_datahora == novo_norm_sem_datahora:
                     return "DUPLICADO"
 
         row = _first_empty_row_in_block(aba, "AD", "AM")
@@ -1114,13 +1113,83 @@ def carregar_opcoes_identificacao(_client, spreadsheet_id):
     except:
         return ["Opção genérica (erro leitura)"]
 
-def tela_busca(client, spread_id):
+def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]) -> pd.DataFrame:
+    planilha = abrir_planilha_selecionada(client, spreadsheet_id)
+    resultados = []
+    termos_norm = _normalize_text(termos)
+
+    for nome in abas:
+        try:
+            aba = planilha.worksheet(nome)
+            all_vals = aba.get_all_values()
+            if not all_vals: continue
+            
+            if nome == "Abordagem":
+                # 1. Bloco de Emissões da Abordagem (H a W -> índices 7 a 22)
+                header_em = all_vals[0][7:23]
+                rows_em = [r[7:23] + [""] * max(0, 16 - len(r[7:23])) for r in all_vals[1:] if len(r) > 7 and any(str(c).strip() for c in r[7:23])]
+                if rows_em and header_em:
+                    df_em = pd.DataFrame(rows_em, columns=header_em)
+                    df_em = df_em.rename(columns={
+                        "Estação": "Local",
+                        "Ocorrência (obsevações)": "Ocorrência (observações)"
+                    })
+                    df_em.insert(0, "Aba/Origem", "Abordagem (Emissão)")
+                    df_em["Fonte"] = "BUSCA_EMISSAO"
+                    
+                    comb_em = df_em.fillna("").astype(str).agg(" ".join, axis=1)
+                    mask_em = comb_em.apply(lambda x: termos_norm in _normalize_text(x))
+                    achados_em = df_em[mask_em].copy()
+                    if not achados_em.empty:
+                        resultados.append(achados_em)
+
+                # 2. Bloco de Equipamentos Etiquetados T&T (AD a AM -> índices 29 a 38)
+                if len(all_vals[0]) >= 30:
+                    header_tt_raw = all_vals[0][29:39]
+                    cols_padrao_tt = ["Entidade", "País", "Data", "Hora", "Contato", "Equipamento", "Qtde", "Freq", "UTE?", "Etiqueta"]
+                    header_tt = [str(header_tt_raw[i]).strip() if i < len(header_tt_raw) and str(header_tt_raw[i]).strip() else cols_padrao_tt[i] for i in range(10)]
+                    
+                    rows_tt = []
+                    for r in all_vals[1:]:
+                        if len(r) > 29:
+                            fatia = r[29:39]
+                            if any(str(c).strip() != "" for c in fatia):
+                                rows_tt.append(fatia + [""] * max(0, 10 - len(fatia)))
+                    
+                    if rows_tt:
+                        df_tt = pd.DataFrame(rows_tt, columns=header_tt)
+                        df_tt.insert(0, "Aba/Origem", "Abordagem (T&T)")
+                        df_tt["Fonte"] = "BUSCA_TT"
+                        
+                        comb_tt = df_tt.fillna("").astype(str).agg(" ".join, axis=1)
+                        mask_tt = comb_tt.apply(lambda x: termos_norm in _normalize_text(x))
+                        achados_tt = df_tt[mask_tt].copy()
+                        if not achados_tt.empty:
+                            resultados.append(achados_tt)
+            else:
+                df = pd.DataFrame(all_vals[1:], columns=all_vals[0])
+                df = df.iloc[:, ~df.columns.duplicated()]
+                df.insert(0, "Aba/Origem", nome)
+                df["Fonte"] = "BUSCA_EMISSAO"
+                
+                comb = df.fillna("").astype(str).agg(" ".join, axis=1)
+                mask = comb.apply(lambda x: termos_norm in _normalize_text(x))
+                
+                achados = df[mask].copy()
+                if not achados.empty:
+                    resultados.append(achados)
+        except: continue
+
+    if not resultados: return pd.DataFrame()
+    return pd.concat(resultados, ignore_index=True).fillna("")
+
+def tela_busca(client, spreadsheet_id):
     render_header()
     
     termo = st.text_input("Buscar texto (mín 3 chars):")
     
     # Abas dinâmicas
-    abas_est = listar_abas_estacoes(client, spread_id)
+    abas_est = listar_abas_estacoes(client, spreadsheet_id)
     abas_ops = ["Abordagem"] + abas_est
     
     abas_sel = st.multiselect("Abas:", abas_ops, default=abas_ops)
@@ -1131,11 +1200,11 @@ def tela_busca(client, spread_id):
             st.warning("Digite pelo menos 3 caracteres para consultar.")
         else:
             with st.spinner("Buscando..."):
-                res = _buscar_por_texto_livre(client, spread_id, termo_clean, abas_sel)
+                res = _buscar_por_texto_livre(client, spreadsheet_id, termo_clean, abas_sel)
             
             if res.empty: 
                 st.info("Nenhum resultado encontrado.")
-            else:def _buscar_por_texto_livre(client
+            else:
                 st.success(f"Resultados encontrados: {len(res)}")
                 
                 for i, (_, row) in enumerate(res.iterrows(), start=1):
