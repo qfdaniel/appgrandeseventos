@@ -1108,76 +1108,65 @@ def carregar_opcoes_identificacao(_client, spreadsheet_id):
     except:
         return ["Opção genérica (erro leitura)"]
 
-def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]) -> pd.DataFrame:
-    planilha = abrir_planilha_selecionada(client, spreadsheet_id)
-    resultados = []
-    termos_norm = _normalize_text(termos)
-
-    for nome in abas:
-        try:
-            aba = planilha.worksheet(nome)
-            all_vals = aba.get_all_values()
-            if not all_vals: continue
+def tela_busca(client, spread_id):
+    render_header()
+    
+    termo = st.text_input("Buscar texto (mín 3 chars):")
+    
+    # Abas dinâmicas
+    abas_est = listar_abas_estacoes(client, spread_id)
+    abas_ops = ["Abordagem"] + abas_est
+    
+    abas_sel = st.multiselect("Abas:", abas_ops, default=abas_ops)
+    
+    if st.button("Consultar", use_container_width=True):
+        termo_clean = termo.strip()
+        if len(termo_clean) < 3: 
+            st.warning("Digite pelo menos 3 caracteres para consultar.")
+        else:
+            with st.spinner("Buscando..."):
+                res = _buscar_por_texto_livre(client, spread_id, termo_clean, abas_sel)
             
-            if nome == "Abordagem":
-                # Recorta apenas o banco de dados real (H a W -> índices 7 a 22)
-                header = all_vals[0][7:23]
-                rows = [r[7:23] for r in all_vals[1:]]
-                df = pd.DataFrame(rows, columns=header)
-                # Padroniza nomes para o buscador
-                df = df.rename(columns={
-                    "Estação": "Local",
-                    "Ocorrência (obsevações)": "Ocorrência (observações)"
-                })
+            if res.empty: 
+                st.info("Nenhum resultado encontrado.")
             else:
-                df = pd.DataFrame(all_vals[1:], columns=all_vals[0])
-                df = df.iloc[:, ~df.columns.duplicated()]
-            
-            df.insert(0, "Aba/Origem", nome)
-            df["Fonte"] = "BUSCA"
-            
-            # Busca em todas as colunas
-            comb = df.fillna("").astype(str).agg(" ".join, axis=1)
-            mask = comb.apply(lambda x: termos_norm in _normalize_text(x))
-            
-            achados = df[mask].copy()
-            if not achados.empty:
-                resultados.append(achados)
-        except: continue
+                st.success(f"Resultados encontrados: {len(res)}")
+                
+                for i, (_, row) in enumerate(res.iterrows(), start=1):
+                    cabecalho = []
+                    
+                    if row.get("Fonte") == "BUSCA_TT":
+                        cabecalho.append("🏷️ T&T")
+                        if row.get("Entidade"): cabecalho.append(str(row.get("Entidade")))
+                        if row.get("País"): cabecalho.append(str(row.get("País")))
+                        if row.get("Equipamento"): cabecalho.append(str(row.get("Equipamento")))
+                        if row.get("Freq"): cabecalho.append(f"{row.get('Freq')} MHz")
+                        if row.get("Etiqueta"): cabecalho.append(str(row.get("Etiqueta")))
+                        id_val = f"tt_{i}"
+                    else:
+                        aba_origem = row.get("Aba/Origem", "")
+                        loc = row.get("Local", row.get("Local/Região", row.get("Estação", "")))
+                        if not loc and aba_origem: loc = aba_origem
+                        if loc: cabecalho.append(str(loc))
+                        
+                        dt = row.get("Data", row.get("Dia", ""))
+                        if dt: cabecalho.append(str(dt))
+                        
+                        fr = row.get("Frequência (MHz)", row.get("Frequência", ""))
+                        if fr: cabecalho.append(f"{fr} MHz")
+                        
+                        id_val = row.get("ID", "")
+                        if id_val: cabecalho.append(f"ID {id_val}")
+                    
+                    titulo_expander = " | ".join(cabecalho) if cabecalho else f"Resultado #{i}"
 
-    if not resultados: return pd.DataFrame()
-    return pd.concat(resultados, ignore_index=True)
+                    with st.expander(titulo_expander):
+                        key_prefix = f"busca_{i}_{id_val}"
+                        render_ocorrencia_readonly(row, key_prefix=key_prefix)
 
-def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
-    """Renderiza os dados de uma linha de forma organizada com todos os campos solicitados"""
-    c1, c2 = st.columns(2)
-    
-    # Mapeamento flexível de nomes de colunas (Data, Freq, etc)
-    data_val = row.get("Data", row.get("Dia", ""))
-    hora_val = row.get("HH:mm", row.get("Hora", ""))
-    freq_val = row.get("Frequência (MHz)", row.get("Frequência", ""))
-    bw_val   = row.get("Largura (kHz)", row.get("BW", ""))
-    
-    with c1:
-        st.text_input("ID", value=str(row.get("ID", "")), disabled=True, key=f"{key_prefix}_id")
-        st.text_input("Local/Estação", value=str(row.get("Local", row.get("Estação", row.get("Aba/Origem", "")))), disabled=True, key=f"{key_prefix}_loc")
-        st.text_input("Fiscal", value=str(row.get("Fiscal", "")), disabled=True, key=f"{key_prefix}_fisc")
-        st.text_input("Data da identificação", value=str(data_val), disabled=True, key=f"{key_prefix}_dt")
-        st.text_input("Hora (HH:mm)", value=str(hora_val), disabled=True, key=f"{key_prefix}_hr")
-        st.text_input("Frequência (MHz)", value=str(freq_val), disabled=True, key=f"{key_prefix}_frq")
-
-    with c2:
-        st.text_input("Largura (kHz)", value=str(bw_val), disabled=True, key=f"{key_prefix}_bw")
-        st.text_input("Faixa de Frequência", value=str(row.get("Faixa de Frequência Envolvida", "")), disabled=True, key=f"{key_prefix}_faixa")
-        st.text_input("Identificação", value=str(row.get("Identificação", "")), disabled=True, key=f"{key_prefix}_ident")
-        st.text_input("Autorizado?", value=str(row.get("Autorizado?", "")), disabled=True, key=f"{key_prefix}_autz")
-        st.text_input("Processo SEI UTE", value=str(row.get("Processo SEI UTE", row.get("Processo SEI", ""))), disabled=True, key=f"{key_prefix}_sei")
-        st.text_input("Situação", value=str(row.get("Situação", "")), disabled=True, key=f"{key_prefix}_sit")
-
-    st.text_input("Alguém mais ciente?", value=str(row.get("Alguém mais ciente?", "")), disabled=True, key=f"{key_prefix}_cient")
-    st.text_area("Ocorrência (observações)", value=str(row.get("Ocorrência (observações)", row.get("Ocorrência (obsevações)", ""))), disabled=True, key=f"{key_prefix}_obs")
-    st.caption(f"Fonte: {row.get('Fonte', 'N/A')} | Aba Origem: {row.get('Aba/Origem', 'N/A')}")
-
+    if botao_voltar(key="voltar_busca"): 
+        st.session_state.view = 'main_menu'
+        st.rerun()
 # ========================= TELAS =========================
 
 def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
@@ -1286,7 +1275,7 @@ def tela_menu_principal(client, spread_id):
         if st.button("**📵 REGISTRAR** Jammer ou ERB Fake", use_container_width=True, key="btn_bsr"):
             st.session_state.view = 'bsr_erb'; st.rerun()
             
-        if st.button("**🔎 PESQUISAR** emissões cadastradas", use_container_width=True, key="btn_buscar"):
+        if st.button("**🔎 PESQUISAR** Emissões e Etiquetas", use_container_width=True, key="btn_buscar"):
             st.session_state.view = 'busca'; st.rerun()
             
         if st.button("🗒️ **CONSULTAR** Atos de UTE", use_container_width=True, key="btn_ute"):
