@@ -1059,10 +1059,15 @@ def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) ->
         if hasattr(dia, "strftime"):
             dia = dia.strftime("%d/%m/%y")
 
+        hora = dados_tt.get("Hora")
+        if hasattr(hora, "strftime"):
+            hora = hora.strftime("%H:%M")
+
         novo_reg = [
             str(dados_tt.get("Entidade", "")).strip(),
             str(dados_tt.get("País", "")).strip(),
             str(dia).strip(),
+            str(hora).strip(),
             str(dados_tt.get("Contato", "")).strip(),
             str(dados_tt.get("Equipamento", "")).strip(),
             str(dados_tt.get("Qtde", "")).strip(),
@@ -1071,18 +1076,19 @@ def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) ->
             str(dados_tt.get("Etiqueta", "")).strip()
         ]
 
-        # Verifica se já existe registro idêntico em AD:AL
-        existentes = aba.get("AD2:AL")
+        # Verifica se já existe registro idêntico em AD:AM (ignora a Hora na comparação ou compara tudo,exceto segundos)
+        existentes = aba.get("AD2:AM")
         if existentes:
+            # Comparamos todos os campos (índices 0,1,2 e 4,5,6,7,8,9) ou os 10 campos completos:
             novo_norm = [_normalize_text(x) for x in novo_reg]
             for r in existentes:
-                r_padded = [(r[i] if i < len(r) else "") for i in range(9)]
+                r_padded = [(r[i] if i < len(r) else "") for i in range(10)]
                 r_norm = [_normalize_text(x) for x in r_padded]
                 if r_norm == novo_norm:
                     return "DUPLICADO"
 
-        row = _first_empty_row_in_block(aba, "AD", "AL")
-        aba.update(f"AD{row}:AL{row}", [novo_reg], value_input_option="USER_ENTERED")
+        row = _first_empty_row_in_block(aba, "AD", "AM")
+        aba.update(f"AD{row}:AM{row}", [novo_reg], value_input_option="USER_ENTERED")
         return "OK"
     except Exception as e:
         return f"ERRO: {e}"
@@ -1129,7 +1135,7 @@ def tela_busca(client, spread_id):
             
             if res.empty: 
                 st.info("Nenhum resultado encontrado.")
-            else:
+            else:def _buscar_por_texto_livre(client
                 st.success(f"Resultados encontrados: {len(res)}")
                 
                 for i, (_, row) in enumerate(res.iterrows(), start=1):
@@ -1566,21 +1572,26 @@ def tela_tt(client, spread_id):
         st.markdown("##### 🏷️ Registrar Equipamento Etiquetado (T&T)")
 
         c1, c2 = st.columns(2)
-        entidade = c1.text_input(f"Entidade {OBRIG}")
-        pais = c2.selectbox(
+        dia_tt = c1.date_input(
+            f"Data (DD/MM/AA) {OBRIG}",
+            value=datetime.now(ZoneInfo(fuso_evento)).date(),
+            format="DD/MM/YYYY"
+        )
+        hora_tt = c2.time_input(
+            f"Hora {OBRIG}",
+            value=datetime.now(ZoneInfo(fuso_evento)).time()
+        )
+
+        c3, c4 = st.columns(2)
+        entidade = c3.text_input(f"Entidade {OBRIG}")
+        pais = c4.selectbox(
             f"País {OBRIG}",
             options=lista_paises,
             index=None,  # Começa vazio; Brasil é o 1º ao abrir a lista
             placeholder="Selecione o país..."
         )
 
-        c3, c4 = st.columns(2)
-        dia_tt = c3.date_input(
-            f"Data (DD/MM/AA) {OBRIG}",
-            value=datetime.now(ZoneInfo(fuso_evento)).date(),
-            format="DD/MM/YYYY"
-        )
-        contato = c4.text_input(f"Contato (Nome - Telefone) {OBRIG}")
+        contato = st.text_input(f"Contato (Nome - Telefone) {OBRIG}")
 
         c5, c6 = st.columns([2, 1])
         equipamento = c5.selectbox(
@@ -1634,9 +1645,10 @@ def tela_tt(client, spread_id):
             st.session_state.tt_success = None
 
             erros = []
+            if not dia_tt: erros.append("Data")
+            if not hora_tt: erros.append("Hora")
             if not entidade or not entidade.strip(): erros.append("Entidade")
             if not pais: erros.append("País")
-            if not dia_tt: erros.append("Data")
             if not contato or not contato.strip(): erros.append("Contato (Nome - Telefone)")
             if not equipamento: erros.append("Equipamento")
             if qtde is None or qtde <= 0: erros.append("Quantidade")
@@ -1655,6 +1667,7 @@ def tela_tt(client, spread_id):
                     "Entidade": entidade.strip(),
                     "País": pais,
                     "Data": dia_tt,
+                    "Hora": hora_tt,
                     "Contato": contato.strip(),
                     "Equipamento": equipamento,
                     "Qtde": int(qtde),
