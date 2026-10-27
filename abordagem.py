@@ -1674,7 +1674,7 @@ def tela_tt(client, spread_id):
         c9, _ = st.columns(2)
         ute_tt = c9.selectbox(
             f"Possui UTE? {OBRIG}",
-            options=["Sim", "Não", "Em processo", "Licenciado (SLP e outros)"],
+            options=["Sim", "Não", "Solicitado, ainda não concluído", "Licenciado (SLP, SLME e outros)"],
             index=None,
             placeholder="Selecione..."
         )
