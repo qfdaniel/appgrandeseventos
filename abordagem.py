@@ -67,8 +67,8 @@ FAIXA_OPCOES = ["FM", "SMA", "SMM", "SLP", "TV", "SMP", "GNSS", "Satélite", "Ra
 
 EQUIP_TT_OPCOES = [
     "Microfone sem fio",
-    "Fone sem fio (retorno)",
-    "Rádio portátil",
+    "Fone de ouvido sem fio ('retorno')",
+    "Rádio portátil ('HT')",
     "Transceptor de câmera",
     "Estação Repetidora",
     "Equip. com modem SMP",
