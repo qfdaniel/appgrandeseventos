@@ -1183,65 +1183,52 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
     if not resultados: return pd.DataFrame()
     return pd.concat(resultados, ignore_index=True).fillna("")
 
-def tela_busca(client, spreadsheet_id):
-    render_header()
-    
-    termo = st.text_input("Buscar texto (mín 3 chars):")
-    
-    # Abas dinâmicas
-    abas_est = listar_abas_estacoes(client, spreadsheet_id)
-    abas_ops = ["Abordagem"] + abas_est
-    
-    abas_sel = st.multiselect("Abas:", abas_ops, default=abas_ops)
-    
-    if st.button("Consultar", use_container_width=True):
-        termo_clean = termo.strip()
-        if len(termo_clean) < 3: 
-            st.warning("Digite pelo menos 3 caracteres para consultar.")
-        else:
-            with st.spinner("Buscando..."):
-                res = _buscar_por_texto_livre(client, spreadsheet_id, termo_clean, abas_sel)
-            
-            if res.empty: 
-                st.info("Nenhum resultado encontrado.")
-            else:
-                st.success(f"Resultados encontrados: {len(res)}")
-                
-                for i, (_, row) in enumerate(res.iterrows(), start=1):
-                    cabecalho = []
-                    
-                    if row.get("Fonte") == "BUSCA_TT":
-                        cabecalho.append("🏷️ T&T")
-                        if row.get("Entidade"): cabecalho.append(str(row.get("Entidade")))
-                        if row.get("País"): cabecalho.append(str(row.get("País")))
-                        if row.get("Equipamento"): cabecalho.append(str(row.get("Equipamento")))
-                        if row.get("Freq"): cabecalho.append(f"{row.get('Freq')} MHz")
-                        if row.get("Etiqueta"): cabecalho.append(str(row.get("Etiqueta")))
-                        id_val = f"tt_{i}"
-                    else:
-                        aba_origem = row.get("Aba/Origem", "")
-                        loc = row.get("Local", row.get("Local/Região", row.get("Estação", "")))
-                        if not loc and aba_origem: loc = aba_origem
-                        if loc: cabecalho.append(str(loc))
-                        
-                        dt = row.get("Data", row.get("Dia", ""))
-                        if dt: cabecalho.append(str(dt))
-                        
-                        fr = row.get("Frequência (MHz)", row.get("Frequência", ""))
-                        if fr: cabecalho.append(f"{fr} MHz")
-                        
-                        id_val = row.get("ID", "")
-                        if id_val: cabecalho.append(f"ID {id_val}")
-                    
-                    titulo_expander = " | ".join(cabecalho) if cabecalho else f"Resultado #{i}"
+def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
+    """Renderiza os dados de uma linha (Emissão ou Equipamento T&T)"""
+    if row.get("Fonte") == "BUSCA_TT":
+        c1, c2 = st.columns(2)
+        with c1:
+            st.text_input("Entidade", value=str(row.get("Entidade", "")), disabled=True, key=f"{key_prefix}_ent")
+            st.text_input("País", value=str(row.get("País", "")), disabled=True, key=f"{key_prefix}_pais")
+            st.text_input("Data", value=str(row.get("Data", "")), disabled=True, key=f"{key_prefix}_dt_tt")
+            st.text_input("Hora (HH:mm)", value=str(row.get("Hora", row.get("HH:mm", ""))), disabled=True, key=f"{key_prefix}_hr_tt")
+            st.text_input("Contato (Nome - Telefone)", value=str(row.get("Contato", "")), disabled=True, key=f"{key_prefix}_cont")
+        with c2:
+            st.text_input("Equipamento", value=str(row.get("Equipamento", "")), disabled=True, key=f"{key_prefix}_eq")
+            st.text_input("Quantidade", value=str(row.get("Qtde", "")), disabled=True, key=f"{key_prefix}_qtd")
+            st.text_input("Frequência (MHz)", value=str(row.get("Freq", "")), disabled=True, key=f"{key_prefix}_frq_tt")
+            st.text_input("Possui UTE?", value=str(row.get("UTE?", "")), disabled=True, key=f"{key_prefix}_ute_tt")
+            st.text_input("Etiqueta", value=str(row.get("Etiqueta", "")), disabled=True, key=f"{key_prefix}_etiq")
+        st.caption(f"Fonte: Equipamentos Etiquetados (T&T) | Aba Origem: {row.get('Aba/Origem', 'Abordagem')}")
+        return
 
-                    with st.expander(titulo_expander):
-                        key_prefix = f"busca_{i}_{id_val}"
-                        render_ocorrencia_readonly(row, key_prefix=key_prefix)
+    c1, c2 = st.columns(2)
+    
+    # Mapeamento flexível de nomes de colunas (Data, Freq, etc)
+    data_val = row.get("Data", row.get("Dia", ""))
+    hora_val = row.get("HH:mm", row.get("Hora", ""))
+    freq_val = row.get("Frequência (MHz)", row.get("Frequência", ""))
+    bw_val   = row.get("Largura (kHz)", row.get("BW", ""))
+    
+    with c1:
+        st.text_input("ID", value=str(row.get("ID", "")), disabled=True, key=f"{key_prefix}_id")
+        st.text_input("Local/Estação", value=str(row.get("Local", row.get("Local/Região", row.get("Estação", row.get("Aba/Origem", ""))))), disabled=True, key=f"{key_prefix}_loc")
+        st.text_input("Fiscal", value=str(row.get("Fiscal", "")), disabled=True, key=f"{key_prefix}_fisc")
+        st.text_input("Data da identificação", value=str(data_val), disabled=True, key=f"{key_prefix}_dt")
+        st.text_input("Hora (HH:mm)", value=str(hora_val), disabled=True, key=f"{key_prefix}_hr")
+        st.text_input("Frequência (MHz)", value=str(freq_val), disabled=True, key=f"{key_prefix}_frq")
 
-    if botao_voltar(key="voltar_busca"): 
-        st.session_state.view = 'main_menu'
-        st.rerun()
+    with c2:
+        st.text_input("Largura (kHz)", value=str(bw_val), disabled=True, key=f"{key_prefix}_bw")
+        st.text_input("Faixa de Frequência", value=str(row.get("Faixa de Frequência Envolvida", "")), disabled=True, key=f"{key_prefix}_faixa")
+        st.text_input("Identificação", value=str(row.get("Identificação", "")), disabled=True, key=f"{key_prefix}_ident")
+        st.text_input("Autorizado?", value=str(row.get("Autorizado?", "")), disabled=True, key=f"{key_prefix}_autz")
+        st.text_input("Processo SEI UTE", value=str(row.get("Processo SEI UTE", row.get("Processo SEI", ""))), disabled=True, key=f"{key_prefix}_sei")
+        st.text_input("Situação", value=str(row.get("Situação", "")), disabled=True, key=f"{key_prefix}_sit")
+
+    st.text_input("Alguém mais ciente?", value=str(row.get("Alguém mais ciente?", "")), disabled=True, key=f"{key_prefix}_cient")
+    st.text_area("Ocorrência (observações)", value=str(row.get("Ocorrência (observações)", row.get("Ocorrência (obsevações)", ""))), disabled=True, key=f"{key_prefix}_obs")
+    st.caption(f"Fonte: {row.get('Fonte', 'N/A')} | Aba Origem: {row.get('Aba/Origem', 'N/A')}")
 # ========================= TELAS =========================
 
 def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
@@ -1766,8 +1753,6 @@ def tela_busca(client, spread_id):
     
     # Abas dinâmicas
     abas_est = listar_abas_estacoes(client, spread_id)
-    
-    # --- ALTERAÇÃO: Removido "PAINEL" da lista. Fica apenas Abordagem + Estações ---
     abas_ops = ["Abordagem"] + abas_est
     
     abas_sel = st.multiselect("Abas:", abas_ops, default=abas_ops)
@@ -1786,38 +1771,40 @@ def tela_busca(client, spread_id):
                 st.success(f"Resultados encontrados: {len(res)}")
                 
                 for i, (_, row) in enumerate(res.iterrows(), start=1):
-                    # --- LÓGICA DE CONSTRUÇÃO DO CABEÇALHO ---
                     cabecalho = []
-                    aba_origem = row.get("Aba/Origem", "")
                     
-                    # Tenta pegar Localização
-                    loc = row.get("Local", row.get("Local/Região", row.get("Estação", "")))
-                    if not loc and aba_origem: loc = aba_origem
-                    if loc: cabecalho.append(str(loc))
-                    
-                    # Tenta pegar Data
-                    dt = row.get("Data", row.get("Dia", ""))
-                    if dt: cabecalho.append(str(dt))
-                    
-                    # Tenta pegar Frequência
-                    fr = row.get("Frequência (MHz)", row.get("Frequência", ""))
-                    if fr: cabecalho.append(f"{fr} MHz")
-                    
-                    # ID
-                    id_val = row.get("ID", "")
-                    if id_val: cabecalho.append(f"ID {id_val}")
+                    if row.get("Fonte") == "BUSCA_TT":
+                        cabecalho.append("🏷️ T&T")
+                        if row.get("Entidade"): cabecalho.append(str(row.get("Entidade")))
+                        if row.get("País"): cabecalho.append(str(row.get("País")))
+                        if row.get("Equipamento"): cabecalho.append(str(row.get("Equipamento")))
+                        if row.get("Freq"): cabecalho.append(f"{row.get('Freq')} MHz")
+                        if row.get("Etiqueta"): cabecalho.append(str(row.get("Etiqueta")))
+                        id_val = f"tt_{i}"
+                    else:
+                        aba_origem = row.get("Aba/Origem", "")
+                        loc = row.get("Local", row.get("Local/Região", row.get("Estação", "")))
+                        if not loc and aba_origem: loc = aba_origem
+                        if loc: cabecalho.append(str(loc))
+                        
+                        dt = row.get("Data", row.get("Dia", ""))
+                        if dt: cabecalho.append(str(dt))
+                        
+                        fr = row.get("Frequência (MHz)", row.get("Frequência", ""))
+                        if fr: cabecalho.append(f"{fr} MHz")
+                        
+                        id_val = row.get("ID", "")
+                        if id_val: cabecalho.append(f"ID {id_val}")
                     
                     titulo_expander = " | ".join(cabecalho) if cabecalho else f"Resultado #{i}"
 
                     with st.expander(titulo_expander):
-                        # Gera um prefixo único para os widgets não conflitarem
                         key_prefix = f"busca_{i}_{id_val}"
                         render_ocorrencia_readonly(row, key_prefix=key_prefix)
 
     if botao_voltar(key="voltar_busca"): 
         st.session_state.view = 'main_menu'
         st.rerun()
-
 def tela_tabela_ute(client, spread_id):
     render_header()
     
