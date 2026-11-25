@@ -36,6 +36,26 @@ def _normalize_text(s: str) -> str:
     s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
     return s.strip().lower()
 
+def _match_etiqueta_faixa(termo: str, texto_etiqueta: str) -> bool:
+    """Verifica se um número buscado (ex: '0004') está contido em uma etiqueta única ou faixa (ex: '0001 a 0006')."""
+    t = (termo or "").strip()
+    if not t.isdigit():
+        return False
+    alvo = int(t)
+    txt = str(texto_etiqueta or "").strip()
+    if not txt:
+        return False
+
+    # Verifica faixa no formato "0001 a 0006", "0001-0006", "0001 até 0006"
+    m = re.search(r"(\d+)\s*(?:a|à|-|até)\s*(\d+)", txt, re.IGNORECASE)
+    if m:
+        inicio, fim = int(m.group(1)), int(m.group(2))
+        return min(inicio, fim) <= alvo <= max(inicio, fim)
+
+    # Verifica número único (ex: "0004" == 4)
+    nums = re.findall(r"\d+", txt)
+    return any(int(n) == alvo for n in nums)
+
 # --- MAPA DA CIDADE (Busca Dinâmica de Coordenadas) ---
 def get_city_map_url(_client, spreadsheet_id):
     """Busca lat/long nas células AE3/AE4 de qualquer aba de estação e retorna URL do Maps"""
@@ -194,13 +214,11 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
                         del st.session_state[key]
                 st.rerun()
         else:
-            # AJUSTE 1: Reduzi a margem inferior do texto de 5px para 0px
             st.markdown(
                 f"<div style='text-align:center; color:#2E7D32; margin:0; font-size: 0.85rem; font-weight: 600; margin-top: -0.5px; margin-bottom: 0px; font-family: sans-serif;'>Evento selecionado: {evento_atual}</div>",
                 unsafe_allow_html=True
             )
 
-    # AJUSTE 2: Margem superior negativa (-10px) para puxar a linha pra cima
     st.markdown(
         """
         <hr style='
@@ -252,10 +270,7 @@ st.markdown(f"""
       -webkit-text-fill-color: #000000 !important;
   }}
 
-  
-  
   /* 3. FORÇA FONTE BRANCA EM TODOS OS BOTÕES (INCLUINDO REGISTRAR/SUBMIT) */
-  /* Aplicamos a todos os botões, links e botões de formulário simultaneamente */
   .stButton > button, 
   .app-btn, 
   div[data-testid="stLinkButton"] a,
@@ -281,59 +296,21 @@ st.markdown(f"""
       margin-bottom: 0px;
   }}
 
-  /* --- 4. CORREÇÃO DE SINTAXE PARA GRID --- */
-  .header-grid {{
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      margin-bottom: 0px;
-  }}
-
-  /* --- CORREÇÃO DE SINTAXE PARA A GRID (CHAVES DOBRADAS) --- */
-  .header-grid {{
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      margin-bottom: 0px;
-  }}
   .stApp {{ background-color: #F1F8E9; }}
   #MainMenu, footer, header {{ visibility: hidden; }}
   div[data-testid="stWidgetLabel"] > label {{ color:#000 !important; text-shadow: 0 1px 0 rgba(0,0,0,.05); }}
   
-  /* Remove margens padrão de linhas horizontais */
   hr {{ margin-top: 0 !important; margin-bottom: 0 !important; }}
 
-  /* --- 2. CABEÇALHO (DISTÂNCIA ATÉ A LINHA) --- */
-  .header-grid {{
-      display: grid;
-      grid-template-columns: 1fr auto 1fr;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      
-      /* 2. ESPAÇO ENTRE O TÍTULO/LOGOS E A LINHA DE BAIXO */
-      margin-bottom: 0px; /* <<< MEXA AQUI (Pode usar negativo ex: -5px) */
-  }}
-  
   .hdr-img {{ height: 55px; object-fit: contain; }}
   
   .hdr-title {{
       margin: 0; 
       color: #1A311F; 
       font-weight: 800; 
-      
-      /* MUDANÇA 1: Tamanho aumentado de 1.5rem para 2rem (igual ao COP30) */
       font-size: 1.7rem; 
-      
       line-height: 1.1; 
-      
-      /* MUDANÇA 2: Sombra dupla (branca e preta) para dar o efeito de profundidade */
       text-shadow: 1px 1px 0 rgba(255,255,255,.35), 0 1px 2px rgba(0,0,0,.28);
-      
       font-family: sans-serif; 
       text-align: center; 
       white-space: normal;
@@ -341,10 +318,7 @@ st.markdown(f"""
 
   @media (max-width: 480px) {{
       .hdr-img {{ height: 38px; }}
-      
-      /* MUDANÇA 3: Ajuste mobile proporcional ao COP30 */
       .hdr-title {{ font-size: 1.3rem; }} 
-      
       .header-grid {{ gap: 5px; }}
   }}
 
@@ -368,9 +342,6 @@ st.markdown(f"""
   }}
 
   /* --- 4. TEXTO DE TROCA DE EVENTO --- */
- /* --- 4. TEXTO DE TROCA DE EVENTO --- */
-  
-  /* Puxa a linha cinza para cima (reduz o espaço das setas azuis) */
   div.stElementContainer:has(div.st-key-btn_trocar_evento_texto) {{
     margin-bottom: -25px !important; 
   }}
@@ -382,7 +353,6 @@ st.markdown(f"""
     margin-top: 0px;
   }}
   
-  /* Estilo do botão em si */
   div.st-key-btn_trocar_evento_texto button {{
     background: transparent !important; 
     border: none !important; 
@@ -390,26 +360,20 @@ st.markdown(f"""
     color: #2E7D32 !important; 
     font-size: 0.85rem !important; 
     font-weight: 600 !important;
-    
-    /* --- ALTURA REDUZIDA --- */
-    min-height: 0px !important;    /* Destrava a altura mínima */
-    height: 26px !important;       /* Define a altura exata (ajuste se quiser menor) */
-    padding: 0 !important;         /* Remove enchimento */
-    
-    /* --- CENTRALIZAÇÃO --- */
+    min-height: 0px !important;
+    height: 26px !important;
+    padding: 0 !important;
     display: flex !important;
     align-items: center !important;
     justify-content: center !important;
     margin: 0 auto !important;
   }}
   
-  /* --- CORREÇÃO CRÍTICA DE CENTRALIZAÇÃO --- */
-  /* Remove a margem do texto interno (o <p>) que empurrava o texto para baixo */
   div.st-key-btn_trocar_evento_texto button p {{
     margin: 0 !important;
     padding: 0 !important;
     line-height: 1 !important;
-    padding-top: 2px !important; /* Ajuste fino ótico se parecer muito alto */
+    padding-top: 2px !important;
   }}
   
   div.st-key-btn_trocar_evento_texto button:hover {{
@@ -418,13 +382,8 @@ st.markdown(f"""
   }}
 
   /* --- 5. ESPAÇAMENTO DA LINHA PARA O PRIMEIRO BOTÃO --- */
-  
-  /* O marker-vermelho é o primeiro item. Usamos margem negativa nele para puxar tudo pra cima */
   div[data-testid="stElementContainer"]:has(#marker-vermelho) {{
-      
-      /* 3. ESPAÇO ENTRE A LINHA E O PRIMEIRO BOTÃO */
-      margin-top: -12.5px !important; /* <<< MEXA AQUI (Quanto mais negativo, mais sobe) */
-      
+      margin-top: -12.5px !important;
       margin-bottom: 0px !important;
       line-height: 0;
   }}
@@ -486,9 +445,8 @@ def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
         
         # 1. Verificar na Abordagem (Coluna M)
         aba_abord = planilha.worksheet("Abordagem")
-        # Buscamos os valores da coluna M (índice 13)
         col_m = aba_abord.col_values(13) 
-        for val in col_m[1:]: # Pula cabeçalho
+        for val in col_m[1:]:
             try:
                 if round(float(str(val).replace(",", ".")), 3) == f_val:
                     return "Abordagem"
@@ -507,7 +465,7 @@ def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
         estacoes = listar_abas_estacoes(client, spreadsheet_id)
         for nome_est in estacoes:
             aba_est = planilha.worksheet(nome_est)
-            col_f = aba_est.col_values(6) # Geralmente freq está na F nas remotas
+            col_f = aba_est.col_values(6)
             for val in col_f[1:]:
                 try:
                     if round(float(str(val).replace(",", ".")), 3) == f_val:
@@ -530,7 +488,6 @@ def obter_fuso_horario_evento(_client, spreadsheet_id):
         
         if abas_estacoes:
             aba = abas_estacoes[0]
-            # Busca Lat em AE3 e Long em AE4
             lat_str = aba.cell(3, 31).value
             lon_str = aba.cell(4, 31).value
             
@@ -542,8 +499,7 @@ def obter_fuso_horario_evento(_client, spreadsheet_id):
                 fuso_encontrado = tf.timezone_at(lng=lon, lat=lat)
                 if fuso_encontrado:
                     return fuso_encontrado
-    except Exception as e:
-        # Se houver qualquer erro (falta de coord, texto no lugar de número), ignora e usa o padrão
+    except Exception:
         pass
         
     return fuso_padrao
@@ -591,13 +547,11 @@ def _next_sequential_id(aba, col_letter: str = "H", start_row: int = 2) -> str:
         col_vals = []
     
     max_num = 0
-    # Percorre os valores existentes para encontrar o maior número após "Abo-"
     for i, v in enumerate(col_vals, start=1):
         if i < start_row: continue
         s = (v or "").strip()
         if not s: continue
         
-        # Tenta extrair o número de formatos como "Abo-01", "Abo-1", etc.
         match = re.search(r"Abo-(\d+)", s, re.IGNORECASE)
         if match:
             try:
@@ -606,7 +560,6 @@ def _next_sequential_id(aba, col_letter: str = "H", start_row: int = 2) -> str:
             except: pass
             
     proximo = max_num + 1
-    # Retorna no formato Abo-XX (com zero à esquerda se for menor que 10)
     return f"Abo-{proximo:02d}"
 
 def _valid_neg_coord(value: str) -> bool:
@@ -635,7 +588,6 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
 
         # 2. Verifica na Tabela UTE (Frequência na Coluna E - índice 5)
         aba_ute = planilha.worksheet("Tabela UTE")
-        # Pegamos colunas A (Entidade) e E (Frequência) para evitar múltiplas chamadas
         entidades = aba_ute.col_values(1)
         freqs_ute = aba_ute.col_values(5)
         
@@ -643,7 +595,7 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
             try:
                 if round(float(str(freqs_ute[i]).replace(",", ".")), 3) == f_val: 
                     entidade = entidades[i] if i < len(entidades) else "Não identificada"
-                    return f"UTE [Entidade: {entidade}]" # Retorno formatado conforme solicitado
+                    return f"UTE [Entidade: {entidade}]"
             except: continue
 
         # 3. Verifica em todas as abas de Estações (Coluna F)
@@ -671,14 +623,14 @@ def carregar_dados_ute(_client, spreadsheet_id):
             if len(row) > 7:
                 dados.append({
                     "País/Entidade": row[0], 
-                    "Local": row[3],            # Puxa da Coluna D
-                    "Frequência (MHz)": row[4], # Puxa da Coluna E
-                    "Processo SEI": row[7]      # Puxa da Coluna H
+                    "Local": row[3],
+                    "Frequência (MHz)": row[4],
+                    "Processo SEI": row[7]
                 })
         df = pd.DataFrame(dados)
         df = df[df["Processo SEI"].str.strip() != ""]
         return df
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 @st.cache_data(ttl=150, show_spinner=False)
@@ -741,7 +693,7 @@ def carregar_pendencias_painel_mapeadas(_client, spreadsheet_id):
         out = out.sort_values(by=["Local", "Data"], kind="stable", na_position="last").reset_index(drop=True)
         out["Fonte"] = "PAINEL"
         return out
-    except Exception as e:
+    except Exception:
         return pd.DataFrame()
 
 @st.cache_data(ttl=150, show_spinner=False)
@@ -749,7 +701,6 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         aba = planilha.worksheet("Abordagem")
-        # Busca o bloco de dados real da Abordagem (H:W)
         matriz = aba.get("H1:W")
         if not matriz or len(matriz) < 2: return pd.DataFrame()
 
@@ -759,27 +710,26 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
             return pd.Series([str(r[idx_offset]).strip() if len(r)>idx_offset else "" for r in rows])
 
         pend = pd.DataFrame({
-            "ID": get_col(0),    # Coluna H
-            "Local": get_col(1), # Coluna I (Estação)
-            "Fiscal": get_col(2),# Coluna J
-            "Data": get_col(3),  # Coluna K
-            "HH:mm": get_col(4), # Coluna L
-            "Frequência (MHz)": get_col(5), # Coluna M
-            "Largura (kHz)": get_col(6),    # Coluna N
-            "Faixa de Frequência Envolvida": get_col(7), # Coluna O
-            "Identificação": get_col(8),    # Coluna P
-            "Autorizado?": get_col(9),      # Coluna Q
-            "UTE?": get_col(10),            # Coluna R
-            "Processo SEI UTE": get_col(11),# Coluna S
-            "Ocorrência (observações)": get_col(12), # Coluna T
-            "Alguém mais ciente?": get_col(13), # Coluna U
-            "Interferente?": get_col(14),   # Coluna V
-            "Situação": get_col(15),         # Coluna W
+            "ID": get_col(0),
+            "Local": get_col(1),
+            "Fiscal": get_col(2),
+            "Data": get_col(3),
+            "HH:mm": get_col(4),
+            "Frequência (MHz)": get_col(5),
+            "Largura (kHz)": get_col(6),
+            "Faixa de Frequência Envolvida": get_col(7),
+            "Identificação": get_col(8),
+            "Autorizado?": get_col(9),
+            "UTE?": get_col(10),
+            "Processo SEI UTE": get_col(11),
+            "Ocorrência (observações)": get_col(12),
+            "Alguém mais ciente?": get_col(13),
+            "Interferente?": get_col(14),
+            "Situação": get_col(15),
             "EstacaoRaw": "ABORDAGEM",
             "Fonte": "ABORDAGEM",
         })
 
-        # Filtra apenas o que for 'Pendente' (ignora maiúsculas/minúsculas)
         pend = pend[pend["Situação"].str.lower().str.strip() == "pendente"].copy()
         return pend.sort_values(by=["Local","Data"], kind="stable").reset_index(drop=True)
     except Exception:
@@ -787,10 +737,6 @@ def carregar_pendencias_abordagem_pendentes(_client, spreadsheet_id):
 
 @st.cache_data(ttl=150, show_spinner=False)
 def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
-    """
-    Busca pendências em TODAS as abas de estações.
-    Versão OTIMIZADA para coluna padronizada 'Data'.
-    """
     try:
         estacoes = listar_abas_estacoes(_client, spreadsheet_id)
         if not estacoes: return pd.DataFrame()
@@ -804,12 +750,9 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
                 matriz = aba.get_all_values()
                 if not matriz or len(matriz) < 2: continue
 
-                # 1. BUSCA INTELIGENTE DO CABEÇALHO
-                # Procura linha que tenha "Situação" E ("ID" ou "Data")
                 header_idx = 0
                 for i in range(min(6, len(matriz))):
                     row_txt = [str(c).lower().strip() for c in matriz[i]]
-                    # Verifica se é a linha de cabeçalho
                     if any("situa" in x for x in row_txt) and (any("id" == x for x in row_txt) or any("data" in x for x in row_txt)):
                         header_idx = i
                         break
@@ -827,10 +770,7 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
                     'situ': lambda s: "situação" in s or "situacao" in s,
                     'id': lambda s: s == "id",
                     'fiscal': lambda s: "fiscal" in s,
-                    
-                    # AQUI FICOU MAIS LIMPO: Busca apenas "data" ou "dia"
                     'data': lambda s: "data" in s or "dia" in s,
-                    
                     'hora': lambda s: "hh" in s or "hora" in s,
                     'freq': lambda s: "frequência" in s or "frequencia" in s,
                     'bw': lambda s: "largura" in s,
@@ -853,8 +793,6 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
                 if pend.empty: continue
 
                 out = pd.DataFrame()
-                
-                # Preenchimento inteligente dos campos principais
                 out["ID"] = pend[found['id']] if found['id'] else (pend.iloc[:, 0] if len(pend.columns)>0 else "")
                 
                 if found['est']: out["Local"] = pend[found['est']]
@@ -863,11 +801,9 @@ def carregar_pendencias_todas_estacoes(_client, spreadsheet_id):
                 
                 out["EstacaoRaw"] = nome_aba
 
-                # Data agora deve ser encontrada facilmente
                 if found['data']:
                     out["Data"] = pend[found['data']]
                 else:
-                    # Fallback de segurança ainda útil
                     if len(pend.columns) > 3: out["Data"] = pend.iloc[:, 3] 
                     elif len(pend.columns) > 1: out["Data"] = pend.iloc[:, 1]
                     else: out["Data"] = ""
@@ -1063,6 +999,12 @@ def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) ->
         if hasattr(hora, "strftime"):
             hora = hora.strftime("%H:%M")
 
+        qtde_val = dados_tt.get("Qtde", 0)
+        try:
+            qtde_num = int(qtde_val)
+        except Exception:
+            qtde_num = str(qtde_val).strip()
+
         novo_reg = [
             str(dados_tt.get("Entidade", "")).strip(),
             str(dados_tt.get("País", "")).strip(),
@@ -1070,24 +1012,25 @@ def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) ->
             str(hora).strip(),
             str(dados_tt.get("Contato", "")).strip(),
             str(dados_tt.get("Equipamento", "")).strip(),
-            str(dados_tt.get("Qtde", "")).strip(),
+            qtde_num,
             str(dados_tt.get("Freq", "")).strip(),
             str(dados_tt.get("UTE?", "")).strip(),
-            str(dados_tt.get("Etiqueta", "")).strip()
+            str(dados_tt.get("Etiqueta", "")).strip(),
+            str(dados_tt.get("Num_Etiqueta", "")).strip()
         ]
 
-        # Verifica se já existe registro idêntico em AD:AM (ignorando Data [índice 2] e Hora [índice 3])
-        existentes = aba.get("AD2:AM")
+        # Verifica se já existe registro idêntico em AD:AN (ignorando Data [índice 2] e Hora [índice 3])
+        existentes = aba.get("AD2:AN")
         if existentes:
-            novo_norm_sem_datahora = [_normalize_text(novo_reg[i]) for i in range(10) if i not in [2, 3]]
+            novo_norm_sem_datahora = [_normalize_text(str(novo_reg[i])) for i in range(11) if i not in [2, 3]]
             for r in existentes:
-                r_padded = [(r[i] if i < len(r) else "") for i in range(10)]
-                r_norm_sem_datahora = [_normalize_text(r_padded[i]) for i in range(10) if i not in [2, 3]]
+                r_padded = [(r[i] if i < len(r) else "") for i in range(11)]
+                r_norm_sem_datahora = [_normalize_text(str(r_padded[i])) for i in range(11) if i not in [2, 3]]
                 if r_norm_sem_datahora == novo_norm_sem_datahora:
                     return "DUPLICADO"
 
-        row = _first_empty_row_in_block(aba, "AD", "AM")
-        aba.update(f"AD{row}:AM{row}", [novo_reg], value_input_option="USER_ENTERED")
+        row = _first_empty_row_in_block(aba, "AD", "AN")
+        aba.update(f"AD{row}:AN{row}", [novo_reg], value_input_option="RAW")
         return "OK"
     except Exception as e:
         return f"ERRO: {e}"
@@ -1099,7 +1042,6 @@ def carregar_opcoes_identificacao(_client, spreadsheet_id):
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         todas = planilha.worksheets()
         
-        # Procura a primeira aba que não seja do sistema
         aba_alvo = None
         for ws in todas:
             if ws.title not in ABAS_SISTEMA:
@@ -1107,7 +1049,6 @@ def carregar_opcoes_identificacao(_client, spreadsheet_id):
                 break
         
         if aba_alvo:
-            # Assume que a validação de dados está na coluna AC (padrão)
             return [i[0] for i in aba_alvo.get('AC2:AC7') if i]
         return ["Opções não encontradas"]
     except:
@@ -1143,18 +1084,19 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
                     if not achados_em.empty:
                         resultados.append(achados_em)
 
-                # 2. Bloco de Equipamentos Etiquetados T&T (AD a AM -> índices 29 a 38)
+                # 2. Bloco de Equipamentos Etiquetados T&T (AD a AN -> índices 29 a 39)
                 if len(all_vals[0]) >= 30:
-                    header_tt_raw = all_vals[0][29:39]
-                    cols_padrao_tt = ["Entidade", "País", "Data", "Hora", "Contato", "Equipamento", "Qtde", "Freq", "UTE?", "Etiqueta"]
-                    header_tt = [str(header_tt_raw[i]).strip() if i < len(header_tt_raw) and str(header_tt_raw[i]).strip() else cols_padrao_tt[i] for i in range(10)]
+                    header_tt_raw = all_vals[0][29:40]
+                    cols_padrao_tt = ["Entidade", "País", "Data", "Hora", "Contato", "Equipamento", "Qtde", "Freq", "UTE?", "Etiqueta", "Nº Etiqueta"]
+                    header_tt = [str(header_tt_raw[i]).strip() if i < len(header_tt_raw) and str(header_tt_raw[i]).strip() else cols_padrao_tt[i] for i in range(11)]
+                    col_num_etiq = header_tt[10]
                     
                     rows_tt = []
                     for r in all_vals[1:]:
                         if len(r) > 29:
-                            fatia = r[29:39]
+                            fatia = r[29:40]
                             if any(str(c).strip() != "" for c in fatia):
-                                rows_tt.append(fatia + [""] * max(0, 10 - len(fatia)))
+                                rows_tt.append(fatia + [""] * max(0, 11 - len(fatia)))
                     
                     if rows_tt:
                         df_tt = pd.DataFrame(rows_tt, columns=header_tt)
@@ -1162,8 +1104,10 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
                         df_tt["Fonte"] = "BUSCA_TT"
                         
                         comb_tt = df_tt.fillna("").astype(str).agg(" ".join, axis=1)
-                        mask_tt = comb_tt.apply(lambda x: termos_norm in _normalize_text(x))
-                        achados_tt = df_tt[mask_tt].copy()
+                        mask_texto = comb_tt.apply(lambda x: termos_norm in _normalize_text(x))
+                        mask_faixa = df_tt[col_num_etiq].apply(lambda x: _match_etiqueta_faixa(termos, x))
+                        
+                        achados_tt = df_tt[mask_texto | mask_faixa].copy()
                         if not achados_tt.empty:
                             resultados.append(achados_tt)
             else:
@@ -1186,6 +1130,10 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
 def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
     """Renderiza os dados de uma linha (Emissão ou Equipamento T&T)"""
     if row.get("Fonte") == "BUSCA_TT":
+        num_etiq_val = next(
+            (row[c] for c in row.index if "etiqueta" in _normalize_text(c) and c != "Etiqueta" and str(row[c]).strip() != ""),
+            ""
+        )
         c1, c2 = st.columns(2)
         with c1:
             st.text_input("Entidade", value=str(row.get("Entidade", "")), disabled=True, key=f"{key_prefix}_ent")
@@ -1193,18 +1141,18 @@ def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
             st.text_input("Data", value=str(row.get("Data", "")), disabled=True, key=f"{key_prefix}_dt_tt")
             st.text_input("Hora (HH:mm)", value=str(row.get("Hora", row.get("HH:mm", ""))), disabled=True, key=f"{key_prefix}_hr_tt")
             st.text_input("Contato (Nome - Telefone)", value=str(row.get("Contato", "")), disabled=True, key=f"{key_prefix}_cont")
+            st.text_input("Possui UTE?", value=str(row.get("UTE?", "")), disabled=True, key=f"{key_prefix}_ute_tt")
         with c2:
             st.text_input("Equipamento", value=str(row.get("Equipamento", "")), disabled=True, key=f"{key_prefix}_eq")
             st.text_input("Quantidade", value=str(row.get("Qtde", "")), disabled=True, key=f"{key_prefix}_qtd")
             st.text_input("Frequência (MHz)", value=str(row.get("Freq", "")), disabled=True, key=f"{key_prefix}_frq_tt")
-            st.text_input("Possui UTE?", value=str(row.get("UTE?", "")), disabled=True, key=f"{key_prefix}_ute_tt")
             st.text_input("Etiqueta", value=str(row.get("Etiqueta", "")), disabled=True, key=f"{key_prefix}_etiq")
+            st.text_input("Nº da Etiqueta", value=str(num_etiq_val), disabled=True, key=f"{key_prefix}_num_etiq")
         st.caption(f"Fonte: Equipamentos Etiquetados (T&T) | Aba Origem: {row.get('Aba/Origem', 'Abordagem')}")
         return
 
     c1, c2 = st.columns(2)
     
-    # Mapeamento flexível de nomes de colunas (Data, Freq, etc)
     data_val = row.get("Data", row.get("Dia", ""))
     hora_val = row.get("HH:mm", row.get("Hora", ""))
     freq_val = row.get("Frequência (MHz)", row.get("Frequência", ""))
@@ -1229,6 +1177,7 @@ def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
     st.text_input("Alguém mais ciente?", value=str(row.get("Alguém mais ciente?", "")), disabled=True, key=f"{key_prefix}_cient")
     st.text_area("Ocorrência (observações)", value=str(row.get("Ocorrência (observações)", row.get("Ocorrência (obsevações)", ""))), disabled=True, key=f"{key_prefix}_obs")
     st.caption(f"Fonte: {row.get('Fonte', 'N/A')} | Aba Origem: {row.get('Aba/Origem', 'N/A')}")
+
 # ========================= TELAS =========================
 
 def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
@@ -1239,7 +1188,6 @@ def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
 def tela_selecao_evento(client):
     """Tela inicial para escolha do evento (Planilha) - OTIMIZADA COM CALLBACK"""
     
-    # --- CSS Centralização ---
     st.markdown(
         """
         <style>
@@ -1271,47 +1219,35 @@ def tela_selecao_evento(client):
         
         if not eventos_dict:
             st.error("Nenhuma planilha de 'Monitoração' encontrada.")
-            # ... (seu código de erro continua igual aqui) ...
             return
 
         opcoes = list(eventos_dict.keys())
         
-        # --- A MÁGICA DO CALLBACK ---
-        # Definimos uma função interna que roda ANTES da interface ser atualizada
         def ao_selecionar():
-            # Pega o valor da session_state usando a key definida no selectbox
             selecao = st.session_state.get("key_selecao_evento")
             if selecao:
                 st.session_state['evento_nome'] = selecao
                 st.session_state['spreadsheet_id'] = eventos_dict[selecao]
                 st.session_state['view'] = 'main_menu'
-                # O Streamlit fará o rerun automaticamente após este callback
 
-        # O selectbox agora tem uma 'key' e um 'on_change'
         st.selectbox(
             "Eventos Disponíveis:", 
             opcoes, 
             index=None, 
             placeholder="Selecione...",
-            key="key_selecao_evento",  # Identificador único
-            on_change=ao_selecionar    # Chama a função acima IMEDIATAMENTE ao clicar
+            key="key_selecao_evento",
+            on_change=ao_selecionar
         )
-        
-        # NOTA: O bloco 'if escolha:' antigo foi removido, pois o 'on_change' cuida de tudo.
 
 def tela_menu_principal(client, spread_id):
     render_header(show_logout=True)
 
-    # --- LOADING ÚNICO E LIMPO ---
     with st.spinner("Carregando base de dados..."):
         df_painel = carregar_pendencias_painel_mapeadas(client, spread_id)
         df_abord  = carregar_pendencias_abordagem_pendentes(client, spread_id)
         df_estac  = carregar_pendencias_todas_estacoes(client, spread_id)
-        
-        # URL Dinâmica do Mapa (também consome tempo)
         link_mapa = get_city_map_url(client, spread_id)
     
-    # Cálculos rápidos (não precisa de spinner)
     count_painel = len(df_painel) if df_painel is not None else 0
     count_abord = len(df_abord) if df_abord is not None else 0
     count_estac = len(df_estac) if df_estac is not None else 0
@@ -1319,7 +1255,6 @@ def tela_menu_principal(client, spread_id):
 
     label_tratar = f"**📝 TRATAR** emissões pendentes ({total})"
     
-    # --- LAYOUT DOS BOTÕES ---
     _, button_col, _ = st.columns([1, 2, 1])
     
     with button_col:
@@ -1354,7 +1289,6 @@ def tela_consultar(client, spread_id):
     df_a = carregar_pendencias_abordagem_pendentes(client, spread_id)
     df_e = carregar_pendencias_todas_estacoes(client, spread_id)
     
-    # Concatena tudo
     dfs = [d for d in [df_p, df_a, df_e] if not d.empty]
     df_pend = pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
 
@@ -1370,7 +1304,6 @@ def tela_consultar(client, spread_id):
             with st.form("form_editar_pendente"):
                 c1, c2 = st.columns(2)
                 
-                # Coluna ESQUERDA (Somente Leitura)
                 with c1:
                     st.text_input("ID", value=str(reg.get("ID","")), disabled=True)
                     st.text_input("Estação utilizada", value=str(reg.get("Local","")), disabled=True)
@@ -1381,7 +1314,6 @@ def tela_consultar(client, spread_id):
                     st.text_input("Largura (kHz)", value=str(reg.get("Largura (kHz)","")), disabled=True)
                     st.text_input("Faixa de Frequência Envolvida", value=str(reg.get("Faixa de Frequência Envolvida","")), disabled=True)
 
-                # Coluna DIREITA (Edição)
                 with c2:
                     ident_v = str(reg.get("Identificação",""))
                     ident_edit = st.selectbox(f"Identificação {OBRIG}", IDENT_OPCOES, index=IDENT_OPCOES.index(ident_v) if ident_v in IDENT_OPCOES else 0)
@@ -1419,7 +1351,6 @@ def tela_consultar(client, spread_id):
                             "Alguém mais ciente?": cient_edit,
                             "Interferente?": interf_edit, "Situação": situ_edit
                         }
-                        # PAINEL ou ESTACAO usam a mesma lógica de atualização
                         if reg["Fonte"] == "PAINEL" or reg["Fonte"] == "ESTACAO":
                             res = atualizar_campos_na_aba_mae(client, spread_id, str(reg["EstacaoRaw"]), str(reg["ID"]), pac)
                         else:
@@ -1434,13 +1365,10 @@ def tela_consultar(client, spread_id):
 def tela_inserir(client, spread_id):
     render_header()
 
-    # --- BLOCO CSS (LIMPO E SEM BARRAS EXTRAS) ---
     st.markdown("""
     <style>
-    /* Remove botões + e - dos campos numéricos */
     div[data-testid="stNumberInput"] button { display: none !important; }
     
-    /* Estiliza o botão de Registrar (Azul Gradiente) */
     .stButton > button {
         background: linear-gradient(to bottom, #14337b, #4464A7) !important;
         border: 3.4px solid #54515c !important;
@@ -1451,7 +1379,6 @@ def tela_inserir(client, spread_id):
         transition: all 0.2s ease-in-out !important;
     }
     
-    /* Efeito Hover Verde */
     .stButton > button:hover {
         background: linear-gradient(to bottom, #9ccc65, #AED581) !important;
         border-color: #7cb342 !important;
@@ -1460,34 +1387,25 @@ def tela_inserir(client, spread_id):
     </style>
     """, unsafe_allow_html=True)
 
-    # --- LÓGICA DE CALLBACK ---
     def check_freq_callback():
-        # Buscamos o valor diretamente do estado da widget
         f_digitada = st.session_state.freq_input_key
-        # Verifica se f_digitada não é None antes de comparar
         if f_digitada is not None and f_digitada > 0:
-            # Força a execução da busca global
             st.session_state.aba_conflito = verificar_frequencia_global(client, spread_id, f_digitada)
         else:
             st.session_state.aba_conflito = None
-        # Limpa mensagem de sucesso anterior
         st.session_state.insert_success = None
 
-    # Inicialização de estados
     if "aba_conflito" not in st.session_state: st.session_state.aba_conflito = None
     if "insert_success" not in st.session_state: st.session_state.insert_success = None
 
     idents = carregar_opcoes_identificacao(client, spread_id)
     dados_prev = st.session_state.get('dados_para_salvar', {})
 
-    # --- CONTAINER NATIVO COM BORDA ---
     with st.container(border=True):
         col1, col2 = st.columns(2)
         
-        # --- BUSCA O FUSO HORÁRIO DINÂMICO ---
         fuso_evento = obter_fuso_horario_evento(client, spread_id)
         
-        # Puxa a data/hora já no fuso correto do evento
         val_dia = dados_prev.get('Dia', datetime.now(ZoneInfo(fuso_evento)).date())
         val_hora = dados_prev.get('Hora', datetime.now(ZoneInfo(fuso_evento)).time())
         
@@ -1499,14 +1417,12 @@ def tela_inserir(client, spread_id):
         
         c3, c4 = st.columns(2)
         
-        # Pega valores prévios se existirem, senão usa None para deixar vazio
         val_freq = dados_prev.get('Frequência em MHz')
         val_freq = float(val_freq) if val_freq else None
         
         val_larg = dados_prev.get('Largura em kHz')
         val_larg = float(val_larg) if val_larg else None
         
-        # AQUI SÓ PODE EXISTIR UM "key='freq_input_key'" EM TODO O CÓDIGO
         freq = c3.number_input(
             f"Frequência (MHz) {OBRIG}", 
             value=val_freq, 
@@ -1521,7 +1437,6 @@ def tela_inserir(client, spread_id):
             format="%.1f"
         )
         
-        # Popup Vermelho Médio
         if st.session_state.aba_conflito:
             st.markdown(
                 f"""
@@ -1541,7 +1456,6 @@ def tela_inserir(client, spread_id):
         
         situacao = st.selectbox(f"Status desta emissão {OBRIG}", ["Pendente", "Concluído"], index=None, placeholder="Selecione o status")
 
-        # Mensagem de sucesso persistente
         if st.session_state.insert_success:
             st.success(st.session_state.insert_success)
 
@@ -1558,7 +1472,7 @@ def tela_inserir(client, spread_id):
                 dados_submit = {
                     'Dia': dia, 'Hora': hora, 'Fiscal': fiscal, 'Local/Região': local,
                     'Frequência em MHz': freq, 
-                    'Largura em kHz': larg if larg is not None else 0.0, # Evita erro se larg for vazio
+                    'Largura em kHz': larg if larg is not None else 0.0,
                     'Faixa de Frequência': faixa,
                     'Identificação': ident, 'UTE?': ute, 'Processo SEI ou Ato UTE': proc,
                     'Observações/Detalhes/Contatos': obs, 'Situação': situacao,
@@ -1577,10 +1491,8 @@ def tela_inserir(client, spread_id):
 def tela_bsr_erb(client, spread_id):
     render_header()
     
-    # Marcador para estilização CSS (se houver)
     st.markdown('<div id="marker-bsr-erb-form"></div>', unsafe_allow_html=True)
     
-    # Usamos container(border=True) para manter o padrão visual da tela de inserir
     with st.container(border=True):
         st.markdown("##### Registrar Jammer ou ERB Fake")
         
@@ -1643,7 +1555,7 @@ def tela_tt(client, spread_id):
         pais = c4.selectbox(
             f"País {OBRIG}",
             options=lista_paises,
-            index=None,  # Começa vazio; Brasil é o 1º ao abrir a lista
+            index=None,
             placeholder="Selecione o país..."
         )
 
@@ -1670,7 +1582,6 @@ def tela_tt(client, spread_id):
             placeholder="Selecione..."
         )
 
-        # Coluna reduzida para o dropdown de UTE não ficar largo na tela toda
         c9, _ = st.columns(2)
         ute_tt = c9.selectbox(
             f"Possui UTE? {OBRIG}",
@@ -1678,6 +1589,43 @@ def tela_tt(client, spread_id):
             index=None,
             placeholder="Selecione..."
         )
+
+        # --- NÚMERO DA ETIQUETA (UNITÁRIO OU FAIXA) ---
+        num_etiqueta_final = ""
+        if qtde is not None and qtde > 1:
+            c10, c11 = st.columns(2)
+            etiq_ini = c10.text_input(
+                f"Nº Etiqueta Inicial {OBRIG}",
+                placeholder="Ex: 0001",
+                key="tt_etiq_ini"
+            )
+            ini_clean = (etiq_ini or "").strip()
+            seed_atual = (ini_clean, int(qtde))
+            if st.session_state.get("tt_last_etiq_seed") != seed_atual:
+                st.session_state["tt_last_etiq_seed"] = seed_atual
+                if ini_clean.isdigit():
+                    n_fim = int(ini_clean) + int(qtde) - 1
+                    st.session_state["tt_etiq_fim"] = str(n_fim).zfill(len(ini_clean))
+                else:
+                    st.session_state["tt_etiq_fim"] = ""
+
+            etiq_fim = c11.text_input(
+                f"Nº Etiqueta Final {OBRIG}",
+                placeholder="Ex: 0005",
+                key="tt_etiq_fim"
+            )
+            fim_clean = (etiq_fim or "").strip()
+            if ini_clean and fim_clean:
+                num_etiqueta_final = f"{ini_clean} a {fim_clean}"
+        else:
+            st.session_state["tt_last_etiq_seed"] = None
+            c10, _ = st.columns(2)
+            etiq_unica = c10.text_input(
+                f"Nº da Etiqueta {OBRIG}",
+                placeholder="Ex: 0001",
+                key="tt_etiq_unica"
+            )
+            num_etiqueta_final = (etiq_unica or "").strip()
 
         # Alerta fundo vermelho e letra branca para registro idêntico
         if st.session_state.tt_duplicado:
@@ -1711,6 +1659,7 @@ def tela_tt(client, spread_id):
             if not freq_tt or not freq_tt.strip(): erros.append("Frequência (MHz)")
             if not ute_tt: erros.append("Possui UTE?")
             if not etiqueta: erros.append("Etiqueta")
+            if not num_etiqueta_final: erros.append("Nº da Etiqueta")
 
             freq_str = (freq_tt or "").strip()
 
@@ -1729,7 +1678,8 @@ def tela_tt(client, spread_id):
                     "Qtde": int(qtde),
                     "Freq": freq_str,
                     "UTE?": ute_tt,
-                    "Etiqueta": etiqueta
+                    "Etiqueta": etiqueta,
+                    "Num_Etiqueta": num_etiqueta_final
                 }
                 status = inserir_equipamento_tt(client, spread_id, dados_tt)
                 if status == "OK":
@@ -1744,14 +1694,15 @@ def tela_tt(client, spread_id):
     if botao_voltar(key="voltar_tt"):
         st.session_state.tt_success = None
         st.session_state.tt_duplicado = False
+        st.session_state["tt_last_etiq_seed"] = None
         st.session_state.view = 'main_menu'
         st.rerun()
+
 def tela_busca(client, spread_id):
     render_header()
     
     termo = st.text_input("Buscar texto (mín 3 chars):")
     
-    # Abas dinâmicas
     abas_est = listar_abas_estacoes(client, spread_id)
     abas_ops = ["Abordagem"] + abas_est
     
@@ -1780,6 +1731,11 @@ def tela_busca(client, spread_id):
                         if row.get("Equipamento"): cabecalho.append(str(row.get("Equipamento")))
                         if row.get("Freq"): cabecalho.append(f"{row.get('Freq')} MHz")
                         if row.get("Etiqueta"): cabecalho.append(str(row.get("Etiqueta")))
+                        num_etiq_hdr = next(
+                            (row[c] for c in row.index if "etiqueta" in _normalize_text(c) and c != "Etiqueta" and str(row[c]).strip() != ""),
+                            ""
+                        )
+                        if num_etiq_hdr: cabecalho.append(f"Nº {num_etiq_hdr}")
                         id_val = f"tt_{i}"
                     else:
                         aba_origem = row.get("Aba/Origem", "")
@@ -1805,20 +1761,18 @@ def tela_busca(client, spread_id):
     if botao_voltar(key="voltar_busca"): 
         st.session_state.view = 'main_menu'
         st.rerun()
+
 def tela_tabela_ute(client, spread_id):
     render_header()
     
-    # Título
     evento_atual = st.session_state.get('evento_nome', 'Evento')
     st.markdown(f"#### Atos de UTE - {evento_atual}") 
     
-    # Aviso de girar celular (Restaurado)
     st.markdown(
         "<p style='text-align: center; font-size: small; margin-top: -0.5rem; margin-bottom: 0.5rem; color: #555;'>(gire o celular ⟳)</p>", 
         unsafe_allow_html=True
     )
     
-    # JavaScript para copiar a célula
     st.markdown("""
     <script>
     function copyToClipboard(text, element) {
@@ -1839,7 +1793,6 @@ def tela_tabela_ute(client, spread_id):
     df = carregar_dados_ute(client, spread_id)
     
     if not df.empty:
-        # --- CONTROLES NATIVOS DO STREAMLIT PARA ORDENAÇÃO ---
         st.markdown("<p style='text-align: center; font-size: 0.9rem; color: #555; margin-bottom: 0;'><b>Ordenar tabela por:</b></p>", unsafe_allow_html=True)
         
         col1, col2 = st.columns([2, 1])
@@ -1856,18 +1809,15 @@ def tela_tabela_ute(client, spread_id):
                 label_visibility="collapsed"
             )
             
-        # --- LÓGICA DE ORDENAÇÃO (PANDAS) ---
         ascendente = True if direcao == "Crescente" else False
         
         if coluna_ordem == "Frequência (MHz)":
-            # Converte a string da frequência para número, trocando vírgula por ponto, para ordenar corretamente
             df['_ordem_temp'] = pd.to_numeric(df['Frequência (MHz)'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
             df = df.sort_values(by='_ordem_temp', ascending=ascendente)
             df = df.drop(columns=['_ordem_temp'])
         else:
             df = df.sort_values(by=coluna_ordem, ascending=ascendente)
             
-        # --- GERAÇÃO DA TABELA HTML ---
         html = "<table class='ute-table'><thead><tr>"
         html += "<th>País/Entidade</th>"
         html += "<th>Local</th>"
@@ -1885,7 +1835,6 @@ def tela_tabela_ute(client, spread_id):
     else:
         st.info("Sem dados de UTE.")
     
-    # Botões padrão do SEI
     c1, c2 = st.columns(2)
     c1.link_button("SEI Interno", "https://sei.anatel.gov.br", use_container_width=True)
     c2.link_button("SEI Público", "https://sei.anatel.gov.br/sei/modulos/pesquisa/md_pesq_processo_pesquisar.php?acao_externa=protocolo_pesquisar&acao_origem_externa=protocolo_pesquisar&id_orgao_acesso_externo=0", use_container_width=True)
@@ -1896,16 +1845,13 @@ def tela_tabela_ute(client, spread_id):
 try:
     client_g = obter_cliente_gspread()
     
-    # Inicializa estados
     if 'view' not in st.session_state: st.session_state.view = 'selecao'
     if 'spreadsheet_id' not in st.session_state: st.session_state.spreadsheet_id = None
 
-    # Roteamento
     if st.session_state.view == 'selecao' or not st.session_state.spreadsheet_id:
         tela_selecao_evento(client_g)
     else:
         sp_id = st.session_state.spreadsheet_id
-        # Passa o cliente para todas as telas se necessário
         if st.session_state.view == 'main_menu': tela_menu_principal(client_g, sp_id)
         elif st.session_state.view == 'consultar': tela_consultar(client_g, sp_id)
         elif st.session_state.view == 'inserir': tela_inserir(client_g, sp_id)
@@ -1916,5 +1862,4 @@ try:
 
 except Exception as e:
     st.error("Erro fatal na aplicação.")
-
     st.exception(e)
