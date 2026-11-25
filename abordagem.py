@@ -1247,7 +1247,11 @@ def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
             st.text_input("Contato (Nome - Telefone)", value=_get_tt_val(row, "Contato"), disabled=True, key=f"{key_prefix}_cont")
             st.text_input("Equipamento", value=_get_tt_val(row, "Equipamento"), disabled=True, key=f"{key_prefix}_eq")
         with c2:
-            st.text_input("Frequência (MHz)", value=_get_tt_val(row, "Freq"), disabled=True, key=f"{key_prefix}_frq_tt")
+            freq_tt_val = _get_tt_val(row, "Freq")
+            if ";" in freq_tt_val:
+                st.text_area("Frequências (MHz)", value=freq_tt_val, height=70, disabled=True, key=f"{key_prefix}_frq_tt")
+            else:
+                st.text_input("Frequência (MHz)", value=freq_tt_val, disabled=True, key=f"{key_prefix}_frq_tt")
             st.text_input("Possui UTE?", value=_get_tt_val(row, "UTE?"), disabled=True, key=f"{key_prefix}_ute_tt")
             st.text_input("Quantidade", value=_get_tt_val(row, "Qtde"), disabled=True, key=f"{key_prefix}_qtd")
             st.text_input("Etiqueta", value=_get_tt_val(row, "Etiqueta"), disabled=True, key=f"{key_prefix}_etiq")
@@ -1627,6 +1631,26 @@ def tela_tt(client, spread_id):
     st.markdown("""
     <style>
     div[data-testid="stNumberInput"] button { display: none !important; }
+    div.st-key-btn_add_canal button {
+        height: 2.4em !important;
+        min-height: 2.4em !important;
+        font-size: 0.88em !important;
+        border-width: 2px !important;
+        background: linear-gradient(to bottom, #2e7d32, #43a047) !important;
+        border-color: #1b5e20 !important;
+        margin-top: -6px !important;
+        margin-bottom: 10px !important;
+    }
+    div.st-key-btn_rem_canal button {
+        height: 2.4em !important;
+        min-height: 2.4em !important;
+        font-size: 0.88em !important;
+        border-width: 2px !important;
+        background: linear-gradient(to bottom, #616161, #757575) !important;
+        border-color: #424242 !important;
+        margin-top: -6px !important;
+        margin-bottom: 10px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -1642,6 +1666,8 @@ def tela_tt(client, spread_id):
         st.session_state.tt_success = None
     if "tt_duplicado" not in st.session_state:
         st.session_state.tt_duplicado = False
+    if "tt_num_canais" not in st.session_state:
+        st.session_state["tt_num_canais"] = 1
 
     fuso_evento = obter_fuso_horario_evento(client, spread_id)
     lista_paises = obter_lista_paises()
@@ -1686,7 +1712,8 @@ def tela_tt(client, spread_id):
             )
             contato = c4.text_input(f"Contato (Nome - Telefone) {OBRIG}")
 
-        # Linha 3: Equipamento | Frequência (Colunas AH | AI)
+        # Linha 3: Equipamento | Frequência Canal 1 (Colunas AH | AI)
+        n_canais = st.session_state["tt_num_canais"]
         c5, c6 = st.columns(2)
         equipamento = c5.selectbox(
             f"Equipamento {OBRIG}",
@@ -1694,10 +1721,52 @@ def tela_tt(client, spread_id):
             index=None,
             placeholder="Selecione..."
         )
-        freq_tt = c6.text_input(
-            f"Frequência (MHz) - NNN,NNN {OBRIG}",
-            placeholder="Ex: 450,125"
+        label_canal_1 = (
+            f"Canal 1 (MHz) - NNN,NNN {OBRIG}"
+            if n_canais > 1
+            else f"Frequência (MHz) - NNN,NNN {OBRIG}"
         )
+        freq_c1 = c6.text_input(
+            label_canal_1,
+            placeholder="Ex: 450,125",
+            key="tt_freq_0"
+        )
+
+        # Canais adicionais (Canal 2 em diante)
+        freqs_digitadas = [freq_c1]
+        if n_canais > 1:
+            for idx_c in range(1, n_canais, 2):
+                col_a, col_b = st.columns(2)
+                fa = col_a.text_input(
+                    f"Canal {idx_c + 1} (MHz) - NNN,NNN {OBRIG}",
+                    placeholder="Ex: 450,250",
+                    key=f"tt_freq_{idx_c}"
+                )
+                freqs_digitadas.append(fa)
+                if idx_c + 1 < n_canais:
+                    fb = col_b.text_input(
+                        f"Canal {idx_c + 2} (MHz) - NNN,NNN {OBRIG}",
+                        placeholder="Ex: 450,375",
+                        key=f"tt_freq_{idx_c + 1}"
+                    )
+                    freqs_digitadas.append(fb)
+
+        # Botões compactos para adicionar / remover canais
+        if n_canais > 1:
+            b_add, b_rem = st.columns(2)
+            if b_add.button("➕ Adicionar canal", key="btn_add_canal", use_container_width=True):
+                st.session_state["tt_num_canais"] += 1
+                st.rerun()
+            if b_rem.button("➖ Remover último canal", key="btn_rem_canal", use_container_width=True):
+                ultimo_idx = st.session_state["tt_num_canais"] - 1
+                st.session_state.pop(f"tt_freq_{ultimo_idx}", None)
+                st.session_state["tt_num_canais"] -= 1
+                st.rerun()
+        else:
+            _, b_add = st.columns(2)
+            if b_add.button("➕ Adicionar canal", key="btn_add_canal", use_container_width=True):
+                st.session_state["tt_num_canais"] += 1
+                st.rerun()
 
         # Linha 4: Possui UTE? | Quantidade (Colunas AJ | AK)
         c7, c8 = st.columns([2, 1])
@@ -1776,6 +1845,7 @@ def tela_tt(client, spread_id):
                 """,
                 unsafe_allow_html=True
             )
+
         # Alerta fundo vermelho e letra branca para registro idêntico
         if st.session_state.tt_duplicado:
             st.markdown(
@@ -1797,6 +1867,13 @@ def tela_tt(client, spread_id):
             st.session_state.tt_duplicado = False
             st.session_state.tt_success = None
 
+            freqs_limpas = [(f or "").strip() for f in freqs_digitadas]
+            canais_vazios = [i + 1 for i, f in enumerate(freqs_limpas) if not f]
+            canais_invalidos = [
+                (i + 1, f) for i, f in enumerate(freqs_limpas)
+                if f and ("." in f or not re.match(r"^\d+,\d+$", f))
+            ]
+
             erros = []
             if not entidade or not entidade.strip(): erros.append("Entidade")
             if not pais: erros.append("País")
@@ -1804,21 +1881,27 @@ def tela_tt(client, spread_id):
             if tem_coluna_hora and not hora_tt: erros.append("Hora")
             if not contato or not contato.strip(): erros.append("Contato (Nome - Telefone)")
             if not equipamento: erros.append("Equipamento")
-            if not freq_tt or not freq_tt.strip(): erros.append("Frequência (MHz)")
+            if canais_vazios:
+                if len(freqs_limpas) == 1:
+                    erros.append("Frequência (MHz)")
+                else:
+                    erros.append("Frequência (Canal " + ", ".join(map(str, canais_vazios)) + ")")
             if not ute_tt: erros.append("Possui UTE?")
             if qtde is None or qtde <= 0: erros.append("Quantidade")
             if not etiqueta: erros.append("Etiqueta")
             if not num_etiqueta_final: erros.append("Número ou Faixa")
 
-            freq_str = (freq_tt or "").strip()
-
             if erros:
                 st.error("Preencha todos os campos obrigatórios: " + ", ".join(erros))
-            elif "." in freq_str or not re.match(r"^\d+,\d+$", freq_str):
-                st.error("A Frequência deve conter apenas números e vírgula (sem ponto), no formato NNN,NNN (ex: 450,125).")
+            elif canais_invalidos:
+                detalhes_inv = ", ".join([f"Canal {idx} ('{val}')" for idx, val in canais_invalidos])
+                st.error(f"A Frequência deve conter apenas números e vírgula (sem ponto), no formato NNN,NNN (ex: 450,125). Verifique: {detalhes_inv}.")
+            elif len(set(freqs_limpas)) != len(freqs_limpas):
+                st.error("Há frequências repetidas entre os canais informados. Corrija ou remova o canal duplicado.")
             elif qtde is not None and qtde > 1 and ini_clean.isdigit() and fim_clean.isdigit() and int(fim_clean) < int(ini_clean):
                 st.error("O Nº da Etiqueta Final não pode ser menor que o Nº da Etiqueta Inicial.")
             else:
+                freq_final_str = "; ".join(freqs_limpas)
                 dados_tt = {
                     "Entidade": entidade.strip(),
                     "País": pais,
@@ -1826,7 +1909,7 @@ def tela_tt(client, spread_id):
                     "Hora": hora_tt,
                     "Contato": contato.strip(),
                     "Equipamento": equipamento,
-                    "Freq": freq_str,
+                    "Freq": freq_final_str,
                     "UTE?": ute_tt,
                     "Qtde": int(qtde),
                     "Etiqueta": etiqueta,
@@ -1848,9 +1931,11 @@ def tela_tt(client, spread_id):
         st.session_state.tt_success = None
         st.session_state.tt_duplicado = False
         st.session_state["tt_limpar_numeracao"] = True
+        for i in range(st.session_state.get("tt_num_canais", 1)):
+            st.session_state.pop(f"tt_freq_{i}", None)
+        st.session_state["tt_num_canais"] = 1
         st.session_state.view = 'main_menu'
         st.rerun()
-
 def tela_busca(client, spread_id):
     render_header()
     
