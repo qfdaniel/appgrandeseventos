@@ -242,11 +242,10 @@ def carregar_registros_tt(_client, spreadsheet_id):
     except Exception:
         return COLS_PADRAO_TT, []
 
-def verificar_conflito_etiqueta(client, spreadsheet_id, num_etiqueta_str: str, tipo_etiqueta: Optional[str]) -> Optional[str]:
-    """Verifica se o número ou faixa informada já foi usada na MESMA categoria de etiqueta (Autorizado / Não permitido)."""
+def verificar_conflito_etiqueta(client, spreadsheet_id, num_etiqueta_str: str) -> Optional[str]:
+    """Verifica se o número ou faixa informada já foi usada em qualquer registro T&T existente."""
     alvo = (num_etiqueta_str or "").strip()
-    tipo_norm = _normalize_text(tipo_etiqueta)
-    if not alvo or not tipo_norm:
+    if not alvo:
         return None
 
     headers, rows = carregar_registros_tt(client, spreadsheet_id)
@@ -254,29 +253,26 @@ def verificar_conflito_etiqueta(client, spreadsheet_id, num_etiqueta_str: str, t
         return None
 
     chaves = [_classificar_coluna_tt(h) for h in headers]
-    if "Num_Etiqueta" not in chaves or "Etiqueta" not in chaves:
+    if "Num_Etiqueta" not in chaves:
         return None
 
     idx_num  = chaves.index("Num_Etiqueta")
-    idx_etiq = chaves.index("Etiqueta")
+    idx_etiq = chaves.index("Etiqueta") if "Etiqueta" in chaves else None
     idx_ent  = chaves.index("Entidade") if "Entidade" in chaves else None
     idx_eq   = chaves.index("Equipamento") if "Equipamento" in chaves else None
 
     for r in rows:
-        cat_existente = r[idx_etiq] if idx_etiq < len(r) else ""
-        if _normalize_text(cat_existente) != tipo_norm:
-            continue
-
         existente = r[idx_num] if idx_num < len(r) else ""
         if existente and _faixas_se_sobrepoem(alvo, existente):
-            detalhes = [f"{cat_existente} - Nº {existente}"]
+            detalhes = [f"Nº {existente}"]
+            if idx_etiq is not None and idx_etiq < len(r) and r[idx_etiq]:
+                detalhes.append(f"Etiqueta: {r[idx_etiq]}")
             if idx_ent is not None and idx_ent < len(r) and r[idx_ent]:
                 detalhes.append(f"Entidade: {r[idx_ent]}")
             if idx_eq is not None and idx_eq < len(r) and r[idx_eq]:
                 detalhes.append(f"Equip.: {r[idx_eq]}")
             return " | ".join(detalhes)
     return None
-
 # --- HEADER ---
 def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
     b64_esq = _img_b64(imagem_esq)
@@ -1765,20 +1761,16 @@ def tela_tt(client, spread_id):
             )
             num_etiqueta_final = (etiq_unica or "").strip()
 
-        # Alerta em tempo real caso o número ou faixa de etiqueta já tenha sido utilizada na mesma categoria
+        # Alerta em tempo real caso o número ou faixa de etiqueta já tenha sido utilizada
         alvo_verificacao = num_etiqueta_final or ini_clean
-        conflito_etiq = (
-            verificar_conflito_etiqueta(client, spread_id, alvo_verificacao, etiqueta)
-            if (alvo_verificacao and etiqueta)
-            else None
-        )
+        conflito_etiq = verificar_conflito_etiqueta(client, spread_id, alvo_verificacao) if alvo_verificacao else None
         if conflito_etiq:
             st.markdown(
                 f"""
                 <div style="background-color: #d32f2f; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
                             padding: 12px; border-radius: 8px; text-align: center; font-weight: bold;
                             margin: 12px 0; border: 2px solid #b71c1c;">
-                    ⚠️ AVISO (apenas): Numeração já utilizada na categoria "{etiqueta}"!<br>
+                    ⚠️ AVISO (apenas): Numeração de etiqueta já utilizada na planilha!<br>
                     Conflito com: {conflito_etiq}
                 </div>
                 """,
