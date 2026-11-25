@@ -36,49 +36,83 @@ def _normalize_text(s: str) -> str:
     s = "".join(ch for ch in s if unicodedata.category(ch) != "Mn")
     return s.strip().lower()
 
+def _parse_faixa_etiqueta(texto: str):
+    """Extrai (inicio, fim) de uma etiqueta única ('0004') ou faixa ('0001 a 0006')."""
+    txt = str(texto or "").strip()
+    if not txt:
+        return None
+    m = re.search(r"(\d+)\s*(?:a|à|-|até)\s*(\d+)", txt, re.IGNORECASE)
+    if m:
+        inicio, fim = int(m.group(1)), int(m.group(2))
+        return (min(inicio, fim), max(inicio, fim))
+    nums = re.findall(r"\d+", txt)
+    if len(nums) == 1:
+        n = int(nums[0])
+        return (n, n)
+    return None
+
+def _faixas_se_sobrepoem(faixa_a: str, faixa_b: str) -> bool:
+    """Verifica se duas etiquetas ou faixas possuem sobreposição numérica."""
+    pa = _parse_faixa_etiqueta(faixa_a)
+    pb = _parse_faixa_etiqueta(faixa_b)
+    if pa and pb:
+        return max(pa[0], pb[0]) <= min(pa[1], pb[1])
+    na, nb = _normalize_text(faixa_a), _normalize_text(faixa_b)
+    return bool(na and nb and na == nb)
+
 def _match_etiqueta_faixa(termo: str, texto_etiqueta: str) -> bool:
     """Verifica se um número buscado (ex: '0004') está contido em uma etiqueta única ou faixa (ex: '0001 a 0006')."""
     t = (termo or "").strip()
     if not t.isdigit():
         return False
     alvo = int(t)
-    txt = str(texto_etiqueta or "").strip()
-    if not txt:
-        return False
+    p = _parse_faixa_etiqueta(texto_etiqueta)
+    if p:
+        return p[0] <= alvo <= p[1]
+    return False
 
-    # Verifica faixa no formato "0001 a 0006", "0001-0006", "0001 até 0006"
-    m = re.search(r"(\d+)\s*(?:a|à|-|até)\s*(\d+)", txt, re.IGNORECASE)
-    if m:
-        inicio, fim = int(m.group(1)), int(m.group(2))
-        return min(inicio, fim) <= alvo <= max(inicio, fim)
+def _classificar_coluna_tt(nome_col: str) -> str:
+    """Mapeia o nome do cabeçalho da planilha para uma chave padronizada do bloco T&T."""
+    s = _normalize_text(nome_col)
+    if "entidade" in s: return "Entidade"
+    if "pais" in s: return "País"
+    if "data" in s or "dia" in s: return "Data"
+    if "hora" in s or "hh" in s: return "Hora"
+    if "contato" in s: return "Contato"
+    if "equip" in s: return "Equipamento"
+    if "freq" in s: return "Freq"
+    if "ute" in s: return "UTE?"
+    if "qtd" in s or "quant" in s: return "Qtde"
+    if "numero" in s or "faixa" in s or "nº" in s or "num" in s: return "Num_Etiqueta"
+    if "etiqueta" in s: return "Etiqueta"
+    return str(nome_col).strip()
 
-    # Verifica número único (ex: "0004" == 4)
-    nums = re.findall(r"\d+", txt)
-    return any(int(n) == alvo for n in nums)
+def _index_to_col(idx: int) -> str:
+    res = ""
+    while idx > 0:
+        idx, rem = divmod(idx - 1, 26)
+        res = chr(65 + rem) + res
+    return res
 
 # --- MAPA DA CIDADE (Busca Dinâmica de Coordenadas) ---
 def get_city_map_url(_client, spreadsheet_id):
     """Busca lat/long nas células AE3/AE4 de qualquer aba de estação e retorna URL do Maps"""
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
-        # Tenta encontrar a primeira aba que não seja de sistema para colher a coordenada central
         abas_estacoes = [ws for ws in planilha.worksheets() if ws.title not in ABAS_SISTEMA]
         
         if abas_estacoes:
             aba = abas_estacoes[0]
-            # Busca Lat em AE3 (Linha 3, Col 31) e Long em AE4 (Linha 4, Col 31)
             lat = aba.cell(3, 31).value
             lon = aba.cell(4, 31).value
             
             if lat and lon:
-                # Limpa possíveis espaços ou vírgulas
                 lat = str(lat).replace(',', '.').strip()
                 lon = str(lon).replace(',', '.').strip()
                 return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
     except:
         pass
         
-    # Fallback caso não encontre coordenadas
     return "https://www.google.com/maps"
 
 IDENT_OPCOES = ["Sinal de dados", "Comunicação relacionada ao evento", "Comunicação não relacionada ao evento", "Espúrio ou Produto de Intermodulação", "Ruído", "Não identificado",]
@@ -97,6 +131,8 @@ EQUIP_TT_OPCOES = [
 
 ETIQUETA_TT_OPCOES = ["Autorizado", "Não permitido"]
 
+COLS_PADRAO_TT = ["Entidade", "País", "Data", "Contato", "Equipamento", "Freq", "UTE?", "Qtde", "Etiqueta", "Número ou Faixa"]
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def obter_lista_paises() -> List[str]:
     """Busca lista pública de países em português (API IBGE) com Brasil no topo."""
@@ -112,7 +148,6 @@ def obter_lista_paises() -> List[str]:
                 paises.remove("Brasil")
             return ["Brasil"] + paises
     except Exception:
-        # Fallback caso a rede em campo bloqueie acesso externo à API do IBGE
         return [
             "Brasil", "África do Sul", "Alemanha", "Angola", "Arábia Saudita", "Argentina",
             "Austrália", "Áustria", "Bélgica", "Bolívia", "Cabo Verde", "Canadá", "Chile",
@@ -182,9 +217,61 @@ def listar_abas_estacoes(_client, spreadsheet_id):
     except:
         return []
 
+@st.cache_data(ttl=60, show_spinner=False)
+def carregar_registros_tt(_client, spreadsheet_id):
+    """Lê dinamicamente cabeçalhos e registros de T&T (a partir de AD1 até AN) na aba Abordagem."""
+    try:
+        planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
+        aba = planilha.worksheet("Abordagem")
+        raw = aba.get("AD1:AN")
+        if not raw:
+            return COLS_PADRAO_TT, []
+
+        headers = [str(c).strip() for c in raw[0]]
+        while headers and headers[-1] == "":
+            headers.pop()
+        if not headers:
+            headers = list(COLS_PADRAO_TT)
+
+        n_cols = len(headers)
+        rows = []
+        for r in raw[1:]:
+            if any(str(c).strip() != "" for c in r[:n_cols]):
+                rows.append([str(r[i]).strip() if i < len(r) else "" for i in range(n_cols)])
+        return headers, rows
+    except Exception:
+        return COLS_PADRAO_TT, []
+
+def verificar_conflito_etiqueta(client, spreadsheet_id, num_etiqueta_str: str) -> Optional[str]:
+    """Verifica se o número ou faixa informada já foi usada em algum registro T&T existente."""
+    alvo = (num_etiqueta_str or "").strip()
+    if not alvo:
+        return None
+    headers, rows = carregar_registros_tt(client, spreadsheet_id)
+    if not rows:
+        return None
+
+    chaves = [_classificar_coluna_tt(h) for h in headers]
+    if "Num_Etiqueta" not in chaves:
+        return None
+
+    idx_num = chaves.index("Num_Etiqueta")
+    idx_ent = chaves.index("Entidade") if "Entidade" in chaves else None
+    idx_eq  = chaves.index("Equipamento") if "Equipamento" in chaves else None
+
+    for r in rows:
+        existente = r[idx_num] if idx_num < len(r) else ""
+        if existente and _faixas_se_sobrepoem(alvo, existente):
+            detalhes = [f"Nº {existente}"]
+            if idx_ent is not None and idx_ent < len(r) and r[idx_ent]:
+                detalhes.append(f"Entidade: {r[idx_ent]}")
+            if idx_eq is not None and idx_eq < len(r) and r[idx_eq]:
+                detalhes.append(f"Equip.: {r[idx_eq]}")
+            return " | ".join(detalhes)
+    return None
+
 # --- HEADER ---
 def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png", show_logout: bool = False):
-    # Carrega imagens
     b64_esq = _img_b64(imagem_esq)
     tag_esq = f'<img class="hdr-img" src="data:image/png;base64,{b64_esq}" alt="Logo Esq">' if b64_esq else ""
     
@@ -193,7 +280,6 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
     
     evento_atual = st.session_state.get('evento_nome', '')
 
-    # Grid de Imagens e Título
     st.markdown(
         f"""
         <div class="header-grid">
@@ -205,7 +291,6 @@ def render_header(imagem_esq: str = "anatel.png", imagem_dir: str = "anatelS.png
         unsafe_allow_html=True
     )
 
-    # Subtítulo (Nome do evento) e Botão de Trocar
     if evento_atual:
         if show_logout:
             if st.button(f"Evento selecionado: {evento_atual} 🔄", key="btn_trocar_evento_texto", help="Clique para trocar de evento"):
@@ -236,7 +321,6 @@ st.markdown(f"""
 <style>
   :root {{ --btn-height: {BTN_HEIGHT}; --btn-gap: {BTN_GAP}; --btn-font: 1.02em; }}
   
-  /* --- REMOVE O EFEITO DE TELA APAGADA (FADING) DURANTE O CARREGAMENTO --- */
   div[data-testid="stAppViewBlockContainer"] {{
       opacity: 1 !important;
       transition: none !important;
@@ -253,24 +337,20 @@ st.markdown(f"""
       visibility: hidden;
   }}
   
-  /* 1. CONFIGURAÇÃO GERAL (FUNDO) */
   .stApp {{ 
       background-color: #F1F8E9; 
   }}
 
-  /* 2. FIXA COR PRETA EM FORMULÁRIOS E TEXTOS (PARA SAMSUNG) */
   .stWidgetLabel, label, p, .stMarkdown {{
       color: #000000 !important;
   }}
 
-  /* Força fundo branco e letra PRETA dentro dos campos de entrada */
   input, textarea, select, div[data-baseweb="select"] {{
       color: #000000 !important;
       background-color: #FFFFFF !important;
       -webkit-text-fill-color: #000000 !important;
   }}
 
-  /* 3. FORÇA FONTE BRANCA EM TODOS OS BOTÕES (INCLUINDO REGISTRAR/SUBMIT) */
   .stButton > button, 
   .app-btn, 
   div[data-testid="stLinkButton"] a,
@@ -286,7 +366,6 @@ st.markdown(f"""
       margin: 0 auto;
   }}
 
-  /* 4. CORREÇÃO DE SINTAXE PARA GRID */
   .header-grid {{
       display: grid;
       grid-template-columns: 1fr auto 1fr;
@@ -443,7 +522,6 @@ def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
         f_val = round(float(freq_digitada), 3)
         planilha = abrir_planilha_selecionada(client, spreadsheet_id)
         
-        # 1. Verificar na Abordagem (Coluna M)
         aba_abord = planilha.worksheet("Abordagem")
         col_m = aba_abord.col_values(13) 
         for val in col_m[1:]:
@@ -452,7 +530,6 @@ def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
                     return "Abordagem"
             except: continue
 
-        # 2. Verificar na Tabela UTE (Coluna E)
         aba_ute = planilha.worksheet("Tabela UTE")
         col_e = aba_ute.col_values(5)
         for val in col_e[1:]:
@@ -461,7 +538,6 @@ def verificar_frequencia_existente(client, spreadsheet_id, freq_digitada):
                     return "Tabela UTE"
             except: continue
 
-        # 3. Verificar nas abas de Estações (Coluna F)
         estacoes = listar_abas_estacoes(client, spreadsheet_id)
         for nome_est in estacoes:
             aba_est = planilha.worksheet(nome_est)
@@ -577,7 +653,6 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
         f_val = round(float(freq_digitada), 3)
         planilha = abrir_planilha_selecionada(client, spreadsheet_id)
         
-        # 1. Verifica na Abordagem (Coluna M - índice 13)
         aba_abord = planilha.worksheet("Abordagem")
         col_m = aba_abord.col_values(13)
         for val in col_m[1:]:
@@ -586,7 +661,6 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
                     return "Abordagem"
             except: continue
 
-        # 2. Verifica na Tabela UTE (Frequência na Coluna E - índice 5)
         aba_ute = planilha.worksheet("Tabela UTE")
         entidades = aba_ute.col_values(1)
         freqs_ute = aba_ute.col_values(5)
@@ -598,7 +672,6 @@ def verificar_frequencia_global(client, spreadsheet_id, freq_digitada):
                     return f"UTE [Entidade: {entidade}]"
             except: continue
 
-        # 3. Verifica em todas as abas de Estações (Coluna F)
         estacoes = listar_abas_estacoes(client, spreadsheet_id)
         for nome_est in estacoes:
             aba_est = planilha.worksheet(nome_est)
@@ -837,7 +910,6 @@ def carregar_todas_frequencias(_client, spreadsheet_id):
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         
-        # 1. PAINEL (B:G)
         aba_painel = planilha.worksheet("PAINEL")
         dados_painel = aba_painel.get("B2:G")
         for row in dados_painel:
@@ -850,7 +922,6 @@ def carregar_todas_frequencias(_client, spreadsheet_id):
                             frequencias_map[f_val] = estacao
                     except: pass
         
-        # 2. Abordagem (I:M)
         aba_abord = planilha.worksheet("Abordagem")
         dados_abord = aba_abord.get("I2:M")
         for row in dados_abord:
@@ -986,7 +1057,7 @@ def inserir_bsr_erb(_client, spreadsheet_id, tipo, regiao, lat, lon) -> str:
         return f"ERRO: {e}"
 
 def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) -> str:
-    """Retorna 'OK' se inserido, 'DUPLICADO' se já existir registro idêntico (ignorando data e hora), ou erro."""
+    """Grava dinamicamente seguindo a ordem exata das colunas AD1:AN1 da aba Abordagem."""
     try:
         planilha = abrir_planilha_selecionada(_client, spreadsheet_id)
         aba = planilha.worksheet("Abordagem")
@@ -1005,32 +1076,47 @@ def inserir_equipamento_tt(_client, spreadsheet_id, dados_tt: Dict[str, str]) ->
         except Exception:
             qtde_num = str(qtde_val).strip()
 
-        novo_reg = [
-            str(dados_tt.get("Entidade", "")).strip(),
-            str(dados_tt.get("País", "")).strip(),
-            str(dia).strip(),
-            str(hora).strip(),
-            str(dados_tt.get("Contato", "")).strip(),
-            str(dados_tt.get("Equipamento", "")).strip(),
-            qtde_num,
-            str(dados_tt.get("Freq", "")).strip(),
-            str(dados_tt.get("UTE?", "")).strip(),
-            str(dados_tt.get("Etiqueta", "")).strip(),
-            str(dados_tt.get("Num_Etiqueta", "")).strip()
-        ]
+        mapa_valores = {
+            "Entidade": str(dados_tt.get("Entidade", "")).strip(),
+            "País": str(dados_tt.get("País", "")).strip(),
+            "Data": str(dia or "").strip(),
+            "Hora": str(hora or "").strip(),
+            "Contato": str(dados_tt.get("Contato", "")).strip(),
+            "Equipamento": str(dados_tt.get("Equipamento", "")).strip(),
+            "Freq": str(dados_tt.get("Freq", "")).strip(),
+            "UTE?": str(dados_tt.get("UTE?", "")).strip(),
+            "Qtde": qtde_num,
+            "Etiqueta": str(dados_tt.get("Etiqueta", "")).strip(),
+            "Num_Etiqueta": str(dados_tt.get("Num_Etiqueta", "")).strip()
+        }
 
-        # Verifica se já existe registro idêntico em AD:AN (ignorando Data [índice 2] e Hora [índice 3])
-        existentes = aba.get("AD2:AN")
+        # Lê cabeçalhos reais de AD1:AN1 para respeitar exatamente a ordem das colunas da planilha
+        hdr_raw = aba.get("AD1:AN1")
+        headers = [str(c).strip() for c in hdr_raw[0]] if (hdr_raw and hdr_raw[0]) else []
+        while headers and headers[-1] == "":
+            headers.pop()
+        if not headers:
+            headers = list(COLS_PADRAO_TT)
+
+        chaves_cols = [_classificar_coluna_tt(h) for h in headers]
+        n_cols = len(chaves_cols)
+        end_col_letter = _index_to_col(30 + n_cols - 1)  # AD é coluna 30
+
+        novo_reg = [mapa_valores.get(chave, "") for chave in chaves_cols]
+
+        # Verifica registro idêntico (ignorando Data e Hora)
+        existentes = aba.get(f"AD2:{end_col_letter}")
         if existentes:
-            novo_norm_sem_datahora = [_normalize_text(str(novo_reg[i])) for i in range(11) if i not in [2, 3]]
+            idxs_comparar = [i for i, k in enumerate(chaves_cols) if k not in ("Data", "Hora")]
+            novo_norm = [_normalize_text(str(novo_reg[i])) for i in idxs_comparar]
             for r in existentes:
-                r_padded = [(r[i] if i < len(r) else "") for i in range(11)]
-                r_norm_sem_datahora = [_normalize_text(str(r_padded[i])) for i in range(11) if i not in [2, 3]]
-                if r_norm_sem_datahora == novo_norm_sem_datahora:
+                r_padded = [(r[i] if i < len(r) else "") for i in range(n_cols)]
+                r_norm = [_normalize_text(str(r_padded[i])) for i in idxs_comparar]
+                if r_norm == novo_norm:
                     return "DUPLICADO"
 
-        row = _first_empty_row_in_block(aba, "AD", "AN")
-        aba.update(f"AD{row}:AN{row}", [novo_reg], value_input_option="RAW")
+        row = _first_empty_row_in_block(aba, "AD", end_col_letter)
+        aba.update(f"AD{row}:{end_col_letter}{row}", [novo_reg], value_input_option="RAW")
         return "OK"
     except Exception as e:
         return f"ERRO: {e}"
@@ -1084,32 +1170,38 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
                     if not achados_em.empty:
                         resultados.append(achados_em)
 
-                # 2. Bloco de Equipamentos Etiquetados T&T (AD a AN -> índices 29 a 39)
+                # 2. Bloco de Equipamentos Etiquetados T&T (AD em diante -> dinâmico AD:AN)
                 if len(all_vals[0]) >= 30:
-                    header_tt_raw = all_vals[0][29:40]
-                    cols_padrao_tt = ["Entidade", "País", "Data", "Hora", "Contato", "Equipamento", "Qtde", "Freq", "UTE?", "Etiqueta", "Nº Etiqueta"]
-                    header_tt = [str(header_tt_raw[i]).strip() if i < len(header_tt_raw) and str(header_tt_raw[i]).strip() else cols_padrao_tt[i] for i in range(11)]
-                    col_num_etiq = header_tt[10]
-                    
-                    rows_tt = []
-                    for r in all_vals[1:]:
-                        if len(r) > 29:
-                            fatia = r[29:40]
-                            if any(str(c).strip() != "" for c in fatia):
-                                rows_tt.append(fatia + [""] * max(0, 11 - len(fatia)))
-                    
-                    if rows_tt:
-                        df_tt = pd.DataFrame(rows_tt, columns=header_tt)
-                        df_tt.insert(0, "Aba/Origem", "Abordagem (T&T)")
-                        df_tt["Fonte"] = "BUSCA_TT"
+                    header_tt_raw = [str(c).strip() for c in all_vals[0][29:40]]
+                    while header_tt_raw and header_tt_raw[-1] == "":
+                        header_tt_raw.pop()
+                    if header_tt_raw:
+                        n_tt = len(header_tt_raw)
+                        col_num_etiq = next((h for h in header_tt_raw if _classificar_coluna_tt(h) == "Num_Etiqueta"), None)
                         
-                        comb_tt = df_tt.fillna("").astype(str).agg(" ".join, axis=1)
-                        mask_texto = comb_tt.apply(lambda x: termos_norm in _normalize_text(x))
-                        mask_faixa = df_tt[col_num_etiq].apply(lambda x: _match_etiqueta_faixa(termos, x))
+                        rows_tt = []
+                        for r in all_vals[1:]:
+                            if len(r) > 29:
+                                fatia = r[29:29 + n_tt]
+                                if any(str(c).strip() != "" for c in fatia):
+                                    rows_tt.append(fatia + [""] * max(0, n_tt - len(fatia)))
                         
-                        achados_tt = df_tt[mask_texto | mask_faixa].copy()
-                        if not achados_tt.empty:
-                            resultados.append(achados_tt)
+                        if rows_tt:
+                            df_tt = pd.DataFrame(rows_tt, columns=header_tt_raw)
+                            df_tt.insert(0, "Aba/Origem", "Abordagem (T&T)")
+                            df_tt["Fonte"] = "BUSCA_TT"
+                            
+                            comb_tt = df_tt.fillna("").astype(str).agg(" ".join, axis=1)
+                            mask_texto = comb_tt.apply(lambda x: termos_norm in _normalize_text(x))
+                            if col_num_etiq:
+                                mask_faixa = df_tt[col_num_etiq].apply(lambda x: _match_etiqueta_faixa(termos, x))
+                                mask_final = mask_texto | mask_faixa
+                            else:
+                                mask_final = mask_texto
+                            
+                            achados_tt = df_tt[mask_final].copy()
+                            if not achados_tt.empty:
+                                resultados.append(achados_tt)
             else:
                 df = pd.DataFrame(all_vals[1:], columns=all_vals[0])
                 df = df.iloc[:, ~df.columns.duplicated()]
@@ -1127,27 +1219,36 @@ def _buscar_por_texto_livre(client, spreadsheet_id, termos: str, abas: List[str]
     if not resultados: return pd.DataFrame()
     return pd.concat(resultados, ignore_index=True).fillna("")
 
+def _get_tt_val(row: pd.Series, chave_alvo: str) -> str:
+    """Recupera o valor de um campo T&T independentemente do nome exato do cabeçalho."""
+    for c in row.index:
+        if c in ("Aba/Origem", "Fonte"):
+            continue
+        if _classificar_coluna_tt(c) == chave_alvo:
+            v = str(row.get(c, "")).strip()
+            if v != "":
+                return v
+    return ""
+
 def render_ocorrencia_readonly(row: pd.Series, key_prefix: str):
     """Renderiza os dados de uma linha (Emissão ou Equipamento T&T)"""
     if row.get("Fonte") == "BUSCA_TT":
-        num_etiq_val = next(
-            (row[c] for c in row.index if "etiqueta" in _normalize_text(c) and c != "Etiqueta" and str(row[c]).strip() != ""),
-            ""
-        )
+        hora_tt_val = _get_tt_val(row, "Hora")
         c1, c2 = st.columns(2)
         with c1:
-            st.text_input("Entidade", value=str(row.get("Entidade", "")), disabled=True, key=f"{key_prefix}_ent")
-            st.text_input("País", value=str(row.get("País", "")), disabled=True, key=f"{key_prefix}_pais")
-            st.text_input("Data", value=str(row.get("Data", "")), disabled=True, key=f"{key_prefix}_dt_tt")
-            st.text_input("Hora (HH:mm)", value=str(row.get("Hora", row.get("HH:mm", ""))), disabled=True, key=f"{key_prefix}_hr_tt")
-            st.text_input("Contato (Nome - Telefone)", value=str(row.get("Contato", "")), disabled=True, key=f"{key_prefix}_cont")
-            st.text_input("Possui UTE?", value=str(row.get("UTE?", "")), disabled=True, key=f"{key_prefix}_ute_tt")
+            st.text_input("Entidade", value=_get_tt_val(row, "Entidade"), disabled=True, key=f"{key_prefix}_ent")
+            st.text_input("País", value=_get_tt_val(row, "País"), disabled=True, key=f"{key_prefix}_pais")
+            st.text_input("Data", value=_get_tt_val(row, "Data"), disabled=True, key=f"{key_prefix}_dt_tt")
+            if hora_tt_val:
+                st.text_input("Hora (HH:mm)", value=hora_tt_val, disabled=True, key=f"{key_prefix}_hr_tt")
+            st.text_input("Contato (Nome - Telefone)", value=_get_tt_val(row, "Contato"), disabled=True, key=f"{key_prefix}_cont")
+            st.text_input("Equipamento", value=_get_tt_val(row, "Equipamento"), disabled=True, key=f"{key_prefix}_eq")
         with c2:
-            st.text_input("Equipamento", value=str(row.get("Equipamento", "")), disabled=True, key=f"{key_prefix}_eq")
-            st.text_input("Quantidade", value=str(row.get("Qtde", "")), disabled=True, key=f"{key_prefix}_qtd")
-            st.text_input("Frequência (MHz)", value=str(row.get("Freq", "")), disabled=True, key=f"{key_prefix}_frq_tt")
-            st.text_input("Etiqueta", value=str(row.get("Etiqueta", "")), disabled=True, key=f"{key_prefix}_etiq")
-            st.text_input("Nº da Etiqueta", value=str(num_etiq_val), disabled=True, key=f"{key_prefix}_num_etiq")
+            st.text_input("Frequência (MHz)", value=_get_tt_val(row, "Freq"), disabled=True, key=f"{key_prefix}_frq_tt")
+            st.text_input("Possui UTE?", value=_get_tt_val(row, "UTE?"), disabled=True, key=f"{key_prefix}_ute_tt")
+            st.text_input("Quantidade", value=_get_tt_val(row, "Qtde"), disabled=True, key=f"{key_prefix}_qtd")
+            st.text_input("Etiqueta", value=_get_tt_val(row, "Etiqueta"), disabled=True, key=f"{key_prefix}_etiq")
+            st.text_input("Número ou Faixa", value=_get_tt_val(row, "Num_Etiqueta"), disabled=True, key=f"{key_prefix}_num_etiq")
         st.caption(f"Fonte: Equipamentos Etiquetados (T&T) | Aba Origem: {row.get('Aba/Origem', 'Abordagem')}")
         return
 
@@ -1186,8 +1287,6 @@ def botao_voltar(label="⬅️ Voltar ao Menu", key=None):
         return st.button(label, use_container_width=True, key=key)
 
 def tela_selecao_evento(client):
-    """Tela inicial para escolha do evento (Planilha) - OTIMIZADA COM CALLBACK"""
-    
     st.markdown(
         """
         <style>
@@ -1528,6 +1627,14 @@ def tela_tt(client, spread_id):
     </style>
     """, unsafe_allow_html=True)
 
+    # Limpa os campos de numeração ANTES da renderização dos widgets após um cadastro bem-sucedido
+    if st.session_state.get("tt_limpar_numeracao", False):
+        st.session_state["tt_etiq_unica"] = ""
+        st.session_state["tt_etiq_ini"] = ""
+        st.session_state["tt_etiq_fim"] = ""
+        st.session_state["tt_last_etiq_seed"] = None
+        st.session_state["tt_limpar_numeracao"] = False
+
     if "tt_success" not in st.session_state:
         st.session_state.tt_success = None
     if "tt_duplicado" not in st.session_state:
@@ -1536,63 +1643,81 @@ def tela_tt(client, spread_id):
     fuso_evento = obter_fuso_horario_evento(client, spread_id)
     lista_paises = obter_lista_paises()
 
+    # Detecta dinamicamente se a planilha selecionada possui coluna Hora no bloco T&T
+    headers_tt, _ = carregar_registros_tt(client, spread_id)
+    tem_coluna_hora = any(_classificar_coluna_tt(h) == "Hora" for h in headers_tt)
+
     with st.container(border=True):
         st.markdown("##### 🏷️ Registrar Equipamento Etiquetado (T&T)")
 
+        # Linha 1: Entidade | País (Colunas AD | AE)
         c1, c2 = st.columns(2)
-        dia_tt = c1.date_input(
-            f"Data (DD/MM/AA) {OBRIG}",
-            value=datetime.now(ZoneInfo(fuso_evento)).date(),
-            format="DD/MM/YYYY"
-        )
-        hora_tt = c2.time_input(
-            f"Hora {OBRIG}",
-            value=datetime.now(ZoneInfo(fuso_evento)).time()
-        )
-
-        c3, c4 = st.columns(2)
-        entidade = c3.text_input(f"Entidade {OBRIG}")
-        pais = c4.selectbox(
+        entidade = c1.text_input(f"Entidade {OBRIG}")
+        pais = c2.selectbox(
             f"País {OBRIG}",
             options=lista_paises,
             index=None,
             placeholder="Selecione o país..."
         )
 
-        contato = st.text_input(f"Contato (Nome - Telefone) {OBRIG}")
+        # Linha 2: Data | Contato (ou Data | Hora + Contato se a planilha tiver coluna Hora)
+        hora_tt = None
+        if tem_coluna_hora:
+            c3, c4 = st.columns(2)
+            dia_tt = c3.date_input(
+                f"Data (DD/MM/AA) {OBRIG}",
+                value=datetime.now(ZoneInfo(fuso_evento)).date(),
+                format="DD/MM/YYYY"
+            )
+            hora_tt = c4.time_input(
+                f"Hora {OBRIG}",
+                value=datetime.now(ZoneInfo(fuso_evento)).time()
+            )
+            contato = st.text_input(f"Contato (Nome - Telefone) {OBRIG}")
+        else:
+            c3, c4 = st.columns(2)
+            dia_tt = c3.date_input(
+                f"Data (DD/MM/AA) {OBRIG}",
+                value=datetime.now(ZoneInfo(fuso_evento)).date(),
+                format="DD/MM/YYYY"
+            )
+            contato = c4.text_input(f"Contato (Nome - Telefone) {OBRIG}")
 
-        c5, c6 = st.columns([2, 1])
+        # Linha 3: Equipamento | Frequência (Colunas AH | AI)
+        c5, c6 = st.columns(2)
         equipamento = c5.selectbox(
             f"Equipamento {OBRIG}",
             options=EQUIP_TT_OPCOES,
             index=None,
             placeholder="Selecione..."
         )
-        qtde = c6.number_input(f"Quantidade {OBRIG}", min_value=1, step=1, value=None)
-
-        c7, c8 = st.columns(2)
-        freq_tt = c7.text_input(
+        freq_tt = c6.text_input(
             f"Frequência (MHz) - NNN,NNN {OBRIG}",
             placeholder="Ex: 450,125"
         )
-        etiqueta = c8.selectbox(
-            f"Etiqueta {OBRIG}",
-            options=ETIQUETA_TT_OPCOES,
-            index=None,
-            placeholder="Selecione..."
-        )
 
-        c9, _ = st.columns(2)
-        ute_tt = c9.selectbox(
+        # Linha 4: Possui UTE? | Quantidade (Colunas AJ | AK)
+        c7, c8 = st.columns([2, 1])
+        ute_tt = c7.selectbox(
             f"Possui UTE? {OBRIG}",
             options=["Sim", "Não", "Solicitado, ainda não concluído", "Licenciado (SLP, SLME e outros)"],
             index=None,
             placeholder="Selecione..."
         )
+        qtde = c8.number_input(f"Quantidade {OBRIG}", min_value=1, step=1, value=None)
 
-        # --- NÚMERO DA ETIQUETA (UNITÁRIO OU FAIXA) ---
+        # Linha 5 (e 6 se Qtde > 1): Etiqueta | Número ou Faixa (Colunas AL | AM)
         num_etiqueta_final = ""
+        ini_clean, fim_clean = "", ""
         if qtde is not None and qtde > 1:
+            c9, _ = st.columns(2)
+            etiqueta = c9.selectbox(
+                f"Etiqueta {OBRIG}",
+                options=ETIQUETA_TT_OPCOES,
+                index=None,
+                placeholder="Selecione..."
+            )
+
             c10, c11 = st.columns(2)
             etiq_ini = c10.text_input(
                 f"Nº Etiqueta Inicial {OBRIG}",
@@ -1619,13 +1744,35 @@ def tela_tt(client, spread_id):
                 num_etiqueta_final = f"{ini_clean} a {fim_clean}"
         else:
             st.session_state["tt_last_etiq_seed"] = None
-            c10, _ = st.columns(2)
+            c9, c10 = st.columns(2)
+            etiqueta = c9.selectbox(
+                f"Etiqueta {OBRIG}",
+                options=ETIQUETA_TT_OPCOES,
+                index=None,
+                placeholder="Selecione..."
+            )
             etiq_unica = c10.text_input(
-                f"Nº da Etiqueta {OBRIG}",
+                f"Número ou Faixa {OBRIG}",
                 placeholder="Ex: 0001",
                 key="tt_etiq_unica"
             )
             num_etiqueta_final = (etiq_unica or "").strip()
+
+        # Alerta em tempo real caso o número ou faixa de etiqueta já tenha sido utilizada
+        alvo_verificacao = num_etiqueta_final or ini_clean
+        conflito_etiq = verificar_conflito_etiqueta(client, spread_id, alvo_verificacao) if alvo_verificacao else None
+        if conflito_etiq:
+            st.markdown(
+                f"""
+                <div style="background-color: #e65100; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+                            padding: 12px; border-radius: 8px; text-align: center; font-weight: bold;
+                            margin: 12px 0; border: 2px solid #bf360c;">
+                    ⚠️ ALERTA: Numeração de etiqueta já utilizada na planilha!<br>
+                    Conflito com: {conflito_etiq}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
 
         # Alerta fundo vermelho e letra branca para registro idêntico
         if st.session_state.tt_duplicado:
@@ -1649,17 +1796,17 @@ def tela_tt(client, spread_id):
             st.session_state.tt_success = None
 
             erros = []
-            if not dia_tt: erros.append("Data")
-            if not hora_tt: erros.append("Hora")
             if not entidade or not entidade.strip(): erros.append("Entidade")
             if not pais: erros.append("País")
+            if not dia_tt: erros.append("Data")
+            if tem_coluna_hora and not hora_tt: erros.append("Hora")
             if not contato or not contato.strip(): erros.append("Contato (Nome - Telefone)")
             if not equipamento: erros.append("Equipamento")
-            if qtde is None or qtde <= 0: erros.append("Quantidade")
             if not freq_tt or not freq_tt.strip(): erros.append("Frequência (MHz)")
             if not ute_tt: erros.append("Possui UTE?")
+            if qtde is None or qtde <= 0: erros.append("Quantidade")
             if not etiqueta: erros.append("Etiqueta")
-            if not num_etiqueta_final: erros.append("Nº da Etiqueta")
+            if not num_etiqueta_final: erros.append("Número ou Faixa")
 
             freq_str = (freq_tt or "").strip()
 
@@ -1667,6 +1814,8 @@ def tela_tt(client, spread_id):
                 st.error("Preencha todos os campos obrigatórios: " + ", ".join(erros))
             elif "." in freq_str or not re.match(r"^\d+,\d+$", freq_str):
                 st.error("A Frequência deve conter apenas números e vírgula (sem ponto), no formato NNN,NNN (ex: 450,125).")
+            elif qtde is not None and qtde > 1 and ini_clean.isdigit() and fim_clean.isdigit() and int(fim_clean) < int(ini_clean):
+                st.error("O Nº da Etiqueta Final não pode ser menor que o Nº da Etiqueta Inicial.")
             else:
                 dados_tt = {
                     "Entidade": entidade.strip(),
@@ -1675,14 +1824,16 @@ def tela_tt(client, spread_id):
                     "Hora": hora_tt,
                     "Contato": contato.strip(),
                     "Equipamento": equipamento,
-                    "Qtde": int(qtde),
                     "Freq": freq_str,
                     "UTE?": ute_tt,
+                    "Qtde": int(qtde),
                     "Etiqueta": etiqueta,
                     "Num_Etiqueta": num_etiqueta_final
                 }
                 status = inserir_equipamento_tt(client, spread_id, dados_tt)
                 if status == "OK":
+                    carregar_registros_tt.clear()
+                    st.session_state["tt_limpar_numeracao"] = True
                     st.session_state.tt_success = "Equipamento registrado com sucesso! Caso queira registrar outro equipamento dessa entidade, altere os campos necessários e Registre."
                     st.rerun()
                 elif status == "DUPLICADO":
@@ -1694,7 +1845,7 @@ def tela_tt(client, spread_id):
     if botao_voltar(key="voltar_tt"):
         st.session_state.tt_success = None
         st.session_state.tt_duplicado = False
-        st.session_state["tt_last_etiq_seed"] = None
+        st.session_state["tt_limpar_numeracao"] = True
         st.session_state.view = 'main_menu'
         st.rerun()
 
@@ -1726,16 +1877,18 @@ def tela_busca(client, spread_id):
                     
                     if row.get("Fonte") == "BUSCA_TT":
                         cabecalho.append("🏷️ T&T")
-                        if row.get("Entidade"): cabecalho.append(str(row.get("Entidade")))
-                        if row.get("País"): cabecalho.append(str(row.get("País")))
-                        if row.get("Equipamento"): cabecalho.append(str(row.get("Equipamento")))
-                        if row.get("Freq"): cabecalho.append(f"{row.get('Freq')} MHz")
-                        if row.get("Etiqueta"): cabecalho.append(str(row.get("Etiqueta")))
-                        num_etiq_hdr = next(
-                            (row[c] for c in row.index if "etiqueta" in _normalize_text(c) and c != "Etiqueta" and str(row[c]).strip() != ""),
-                            ""
-                        )
-                        if num_etiq_hdr: cabecalho.append(f"Nº {num_etiq_hdr}")
+                        ent_v = _get_tt_val(row, "Entidade")
+                        pais_v = _get_tt_val(row, "País")
+                        eq_v = _get_tt_val(row, "Equipamento")
+                        frq_v = _get_tt_val(row, "Freq")
+                        etiq_v = _get_tt_val(row, "Etiqueta")
+                        num_v = _get_tt_val(row, "Num_Etiqueta")
+                        if ent_v: cabecalho.append(ent_v)
+                        if pais_v: cabecalho.append(pais_v)
+                        if eq_v: cabecalho.append(eq_v)
+                        if frq_v: cabecalho.append(f"{frq_v} MHz")
+                        if etiq_v: cabecalho.append(etiq_v)
+                        if num_v: cabecalho.append(f"Nº {num_v}")
                         id_val = f"tt_{i}"
                     else:
                         aba_origem = row.get("Aba/Origem", "")
