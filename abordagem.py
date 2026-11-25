@@ -1764,10 +1764,10 @@ def tela_tt(client, spread_id):
         if conflito_etiq:
             st.markdown(
                 f"""
-                <div style="background-color: #e65100; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
+                <div style="background-color: #d32f2f; color: #FFFFFF !important; -webkit-text-fill-color: #FFFFFF !important;
                             padding: 12px; border-radius: 8px; text-align: center; font-weight: bold;
-                            margin: 12px 0; border: 2px solid #bf360c;">
-                    ⚠️ ALERTA: Numeração de etiqueta já utilizada na planilha!<br>
+                            margin: 12px 0; border: 2px solid #b71c1c;">
+                    ⚠️ AVISO (apenas): Numeração de etiqueta já utilizada na planilha!<br>
                     Conflito com: {conflito_etiq}
                 </div>
                 """,
